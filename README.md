@@ -32,6 +32,15 @@ npm run build    # type-check strict + bundle de production
    timeline, le replanifier ou l'annuler), la Chimie enrichit les planètes
    refroidies, les Conditions de Vie font monter les eaux dans la zone
    tempérée, la Vie déclenche l'abiogenèse.
+   La stabilité n'est jamais acquise : chaque étoile naît avec sa MORT écrite
+   dans sa timeline — les naines s'éteignent dans très longtemps, les géantes
+   bleues (nées d'un effondrement trop nourri) explosent en ★ SUPERNOVA qui
+   stérilise les mondes proches, ensemence les lointains en chimie, et laisse
+   un trou noir dont l'emprise avale ses planètes. Coder Fusion tôt fait des
+   étoiles petites et calmes ; tard, une seule géante condamnée : la
+   cosmologie a deux actes, et le second n'est jamais garanti. Les planètes
+   ont une nature (rocheuse, monde de glace, géante gazeuse à bandes — cette
+   dernière dévie 35 % des astéroïdes du système : le bouclier jovien).
 3. **Observez.** Molette = zoom continu (la caméra plonge sur le corps visé),
    drag = déplacement, clic = inspection/édition de n'importe quelle entité
    (panneau droit). x1/x10/x100 pour accélérer les ères.
@@ -176,5 +185,6 @@ tests/              tests console (node --test), dont la genèse complète
 - Les personnages ne connaissent pas l'eau (ils marchent dessus) ; la mer qui
   monte peut noyer la première forêt — émergent et assumé.
 - Le suivi caméra d'une planète rapide à x100 peut traîner derrière (lissage).
+- L'éruption stellaire n'a pas encore d'effet visuel à la réalisation (journal seul).
 - Pas de sauvegarde/chargement (toutes les données y sont prêtes).
 - Le « HD-2D » est évoqué (billboards + ombres + tri Y), pas du vrai 3D.
