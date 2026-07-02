@@ -10,6 +10,7 @@
 import type { World } from '../simulation/ecs.js';
 import { Species } from '../simulation/components.js';
 import { RuleEngine, type RuleDef } from '../simulation/rules.js';
+import type { UniverseTemperament } from '../simulation/temperament.js';
 
 interface RuleCard {
   def: RuleDef;
@@ -30,6 +31,9 @@ export class RulesPanel {
     root: HTMLElement,
     private readonly engine: RuleEngine,
     private readonly world: World,
+    seed: number,
+    temperament: UniverseTemperament,
+    onNewUniverse: () => void,
   ) {
     const title = document.createElement('h2');
     title.textContent = 'Code de l\'univers';
@@ -37,6 +41,26 @@ export class RulesPanel {
     subtitle.className = 'subtitle';
     subtitle.textContent = 'chaque règle coûte du calcul — l\'émergence en rapporte';
     root.append(title, subtitle);
+
+    // La DONNE : annoncée dès le Vide, comme une main de poker. La seed est
+    // affichée pour être partagée — même seed, même univers.
+    const deal = document.createElement('div');
+    deal.className = 'deal';
+    const dealHead = document.createElement('div');
+    dealHead.className = 'deal-head';
+    const dealName = document.createElement('span');
+    dealName.className = 'deal-name';
+    dealName.textContent = `${temperament.label} — univers n° ${seed}`;
+    const reroll = document.createElement('button');
+    reroll.textContent = '↻ nouvel univers';
+    reroll.title = 'Retirer une donne (nouvelle seed)';
+    reroll.addEventListener('click', onNewUniverse);
+    dealHead.append(dealName, reroll);
+    const dealDesc = document.createElement('div');
+    dealDesc.className = 'deal-desc';
+    dealDesc.textContent = temperament.description;
+    deal.append(dealHead, dealDesc);
+    root.appendChild(deal);
 
     const budget = document.createElement('div');
     budget.className = 'budget';
@@ -92,6 +116,19 @@ export class RulesPanel {
         this.addLogEntry(`☀ Éruption de ${name()} — ${burned} forêts brûlées`, burned > 0);
       } else if (e.kind === 'hazard-deflected') {
         this.addLogEntry(`✦ Trajectoire déviée : ${name()} est sauf`, true);
+      } else if (e.kind === 'terraform-started') {
+        const target = (e.data as { target: number }).target;
+        this.addLogEntry(`⛭ ${name()} : migration d'orbite engagée vers ${target}`);
+      } else if (e.kind === 'terraform-complete') {
+        this.addLogEntry(`⛭ ${name()} : orbite stabilisée`, true);
+      } else if (e.kind === 'planet-consumed') {
+        const souls = (e.data as { souls: number }).souls;
+        this.addLogEntry(
+          souls > 0
+            ? `🔥 ${name()} est tombé dans son étoile — ${souls} vies avec lui`
+            : `🔥 ${name()} est tombé dans son étoile`,
+          true,
+        );
       }
     });
     this.addLogEntry('Le Vide. Rien n\'existe. À vous d\'écrire la première règle.');

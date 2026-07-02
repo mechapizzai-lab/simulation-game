@@ -111,6 +111,13 @@ export interface IgnitingData {
 }
 export const Igniting = defineComponent<IgnitingData>('Igniting');
 
+/** Terraformation en cours : l'orbite MIGRE lentement vers son rayon cible
+ *  (pas de téléportation — le geste divin se paie ET se regarde). */
+export interface OrbitMigrationData {
+  targetRadius: number;
+}
+export const OrbitMigration = defineComponent<OrbitMigrationData>('OrbitMigration');
+
 /** Corps menaçant en approche (astéroïde...) : lié à un événement de la Fate
  *  Queue du CORPS VISÉ. Sa position est interpolée paramétriquement entre son
  *  point d'apparition et la cible mouvante — il arrive exactement au tick

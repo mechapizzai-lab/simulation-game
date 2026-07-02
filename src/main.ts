@@ -17,7 +17,12 @@ import { RulesPanel } from './ui/rulesPanel.js';
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
 
-const scenario = buildVoidScenario();
+// La seed vient de l'URL (?seed=N) pour être partageable ; sinon on en tire
+// une au hasard — chaque partie est une donne différente.
+const urlSeed = Number(new URLSearchParams(location.search).get('seed'));
+const seed = Number.isFinite(urlSeed) && urlSeed > 0 ? Math.floor(urlSeed) : Math.floor(Math.random() * 1_000_000);
+
+const scenario = buildVoidScenario(seed);
 const { world, fate, engine } = scenario;
 const clock = new SimulationClock(world);
 const hud = new Hud(
@@ -26,7 +31,16 @@ const hud = new Hud(
   world,
   () => engine.isActive(RULE_TIME),
 );
-const rulesPanel = new RulesPanel(document.getElementById('rules') as HTMLElement, engine, world);
+const rulesPanel = new RulesPanel(
+  document.getElementById('rules') as HTMLElement,
+  engine,
+  world,
+  seed,
+  scenario.temperament,
+  () => {
+    location.search = `?seed=${Math.floor(Math.random() * 1_000_000)}`;
+  },
+);
 const godPanel = new GodPanel(document.getElementById('panel') as HTMLElement, world, fate, engine);
 
 const viewport = { width: 0, height: 0 };
@@ -64,7 +78,7 @@ bindInput(canvas, camera, (px, py) => {
 // Hook d'inspection pour les tests pilotés (Playwright) : lire l'état de la
 // caméra et du moteur sans passer par les pixels. Aucune logique n'en dépend.
 Object.assign(window as unknown as Record<string, unknown>, {
-  __sim: { camera, world, engine, fate },
+  __sim: { camera, world, engine, fate, seed, temperament: scenario.temperament },
 });
 
 let lastTime = performance.now();

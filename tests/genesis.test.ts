@@ -35,7 +35,7 @@ function runUntil(
 }
 
 test('le Vide est vide, et rien n\'émerge tant qu\'aucune règle n\'est codée', () => {
-  const s = buildVoidScenario(1);
+  const s = buildVoidScenario(1, { temperamentId: 'calm' });
   assert.equal(s.world.entityCount, 0);
   for (let i = 0; i < 200; i++) s.world.step();
   assert.equal(s.world.entityCount, 0, 'aucune règle : rien, jamais');
@@ -43,7 +43,7 @@ test('le Vide est vide, et rien n\'émerge tant qu\'aucune règle n\'est codée'
 });
 
 test('la grande échelle : du néant à la vie, avec deux dilemmes de budget', () => {
-  const s = buildVoidScenario(20260702);
+  const s = buildVoidScenario(20260702, { temperamentId: 'calm' });
   const { world, engine } = s;
 
   // --- Coder les fondations : Temps, Espace, Matière (6/10) ---
@@ -121,7 +121,7 @@ test('la grande échelle : du néant à la vie, avec deux dilemmes de budget', (
 });
 
 test('rétroactivité : paramètres en direct, destins écrits figés', () => {
-  const s = buildVoidScenario(5);
+  const s = buildVoidScenario(5, { temperamentId: 'calm' });
   const { world, engine, fate } = s;
   engine.capacity = 100; // hors gameplay : on teste les contrats, pas le budget
   for (const id of [RULE_TIME, RULE_SPACE, RULE_MATTER, RULE_GRAVITY, RULE_AGGREGATION, RULE_FUSION]) {
@@ -162,7 +162,7 @@ test('rétroactivité : paramètres en direct, destins écrits figés', () => {
 });
 
 test('couper une règle arrête le processus, jamais les produits', () => {
-  const s = buildVoidScenario(9);
+  const s = buildVoidScenario(9, { temperamentId: 'calm' });
   const { world, engine } = s;
   engine.capacity = 100;
   for (const id of [RULE_TIME, RULE_SPACE, RULE_MATTER, RULE_GRAVITY, RULE_AGGREGATION]) {

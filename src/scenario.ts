@@ -8,6 +8,11 @@ import { FateQueue, createFateSystem } from './simulation/fate.js';
 import { Rng } from './simulation/rng.js';
 import { RuleEngine } from './simulation/rules.js';
 import { defineCosmos, type CosmosOptions } from './simulation/cosmos.js';
+import {
+  temperamentById,
+  temperamentFor,
+  type UniverseTemperament,
+} from './simulation/temperament.js';
 import { registerStandardFates } from './simulation/archetypes.js';
 import {
   AgingSystem,
@@ -29,16 +34,28 @@ export interface VoidScenario {
   fate: FateQueue;
   engine: RuleEngine;
   rng: Rng;
+  seed: number;
+  temperament: UniverseTemperament;
 }
 
-export function buildVoidScenario(seed = 20260702, options: CosmosOptions = {}): VoidScenario {
+export interface ScenarioOptions extends CosmosOptions {
+  /** Force un tempérament (tests) au lieu du tirage par seed. */
+  temperamentId?: string;
+}
+
+export function buildVoidScenario(seed = 20260702, options: ScenarioOptions = {}): VoidScenario {
   const world = new World();
   const fate = new FateQueue();
   const rng = new Rng(seed);
   const engine = new RuleEngine(INITIAL_CAPACITY);
   registerStandardFates(fate);
 
-  const cosmos = defineCosmos(engine, world, fate, rng, options);
+  // La seed tire la DONNE de l'univers : même seed, même donne, même monde.
+  const temperament = options.temperamentId
+    ? temperamentById(options.temperamentId)
+    : temperamentFor(seed);
+
+  const cosmos = defineCosmos(engine, world, fate, rng, temperament, options);
 
   // Ordre d'exécution : destins d'abord (les morts de ce tick ne bougent plus),
   // puis les processus des règles, puis les évolutions continues des produits.
@@ -68,5 +85,5 @@ export function buildVoidScenario(seed = 20260702, options: CosmosOptions = {}):
     },
   });
 
-  return { world, fate, engine, rng };
+  return { world, fate, engine, rng, seed, temperament };
 }

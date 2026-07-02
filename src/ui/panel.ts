@@ -29,7 +29,13 @@ import {
   Wanderer,
 } from '../simulation/components.js';
 import { FATE_DEATH, FATE_MATURITY, applyLifespanEdit } from '../simulation/archetypes.js';
-import { interventionCost } from '../simulation/cosmos.js';
+import {
+  interventionCost,
+  TERRAFORM_ORBIT_COST,
+  TERRAFORM_TEMP_COST,
+  TERRAFORM_TEMP_STEP,
+} from '../simulation/cosmos.js';
+import { OrbitMigration } from '../simulation/components.js';
 import { RuleEngine } from '../simulation/rules.js';
 
 interface FieldSpec {
@@ -99,15 +105,16 @@ const EDITABLE_COMPONENTS: ComponentSpec[] = [
     { key: 'speed', label: 'vitesse', set: direct(erase(Wanderer), 'speed'), step: 0.05 },
     { key: 'range', label: 'territoire', set: direct(erase(Wanderer), 'range') },
   ]),
+  // Orbite et température d'une planète : LECTURE SEULE ici — les modifier
+  // est un acte de terraformation, payant et progressif (section dédiée).
   spec(Orbit, [
-    { key: 'radius', label: 'rayon d\'orbite', set: direct(erase(Orbit), 'radius') },
-    { key: 'angularSpeed', label: 'vitesse angulaire', set: direct(erase(Orbit), 'angularSpeed'), step: 0.0001 },
+    { key: 'radius', label: 'rayon d\'orbite' },
+    { key: 'angularSpeed', label: 'vitesse angulaire' },
   ]),
   spec(Mass, [{ key: 'mass', label: 'masse' }]), // lecture seule : la masse s'amasse, elle ne se décrète pas
   spec(Temperature, [
-    // Réchauffer ou refroidir un monde à la main : édit divin par excellence.
-    { key: 'current', label: 'température', set: direct(erase(Temperature), 'current') },
-    { key: 'coolingPerTick', label: 'refroidissement/tick', set: direct(erase(Temperature), 'coolingPerTick'), step: 0.01 },
+    { key: 'current', label: 'température' },
+    { key: 'coolingPerTick', label: 'refroidissement/tick' },
   ]),
   spec(Chemistry, [{ key: 'richness', label: 'richesse chimique', set: direct(erase(Chemistry), 'richness'), step: 0.05 }]),
 ];
@@ -266,6 +273,8 @@ export class GodPanel {
       this.root.appendChild(box);
     }
 
+    this.buildTerraformSection(entity);
+
     const fateTitle = document.createElement('h3');
     fateTitle.textContent = 'Destin (Fate Queue)';
     this.root.appendChild(fateTitle);
@@ -276,6 +285,102 @@ export class GodPanel {
     this.fateContainer = document.createElement('div');
     this.root.appendChild(this.fateContainer);
     this.rebuildFate();
+  }
+
+  /** Terraformation : les actes lourds sur un MONDE — payants, progressifs.
+   *  L'orbite migre (elle ne saute pas) ; la température se pousse par crans. */
+  private buildTerraformSection(entity: EntityId): void {
+    if (this.world.get(entity, Species)?.kind !== 'planet') return;
+    const title = document.createElement('h3');
+    title.textContent = 'Terraformation';
+    this.root.appendChild(title);
+    const msg = document.createElement('div');
+    msg.className = 'hint';
+    msg.textContent = 'déplacer un monde se paie — et se regarde';
+    this.root.appendChild(msg);
+    const say = (text: string, isError: boolean): void => {
+      msg.textContent = text;
+      msg.style.color = isError ? '#e06c6c' : '#8fd49a';
+    };
+
+    const box = document.createElement('div');
+    box.className = 'comp';
+
+    const orbit = this.world.get(entity, Orbit);
+    if (orbit) {
+      const row = document.createElement('div');
+      row.className = 'field';
+      const label = document.createElement('label');
+      label.textContent = 'migrer l\'orbite vers';
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.value = String(Math.round(this.world.get(entity, OrbitMigration)?.targetRadius ?? orbit.radius));
+      const btn = document.createElement('button');
+      btn.className = 'rule-action';
+      btn.textContent = `Migrer (${TERRAFORM_ORBIT_COST} ⚙)`;
+      btn.addEventListener('click', () => {
+        const target = Math.max(20, Math.round(Number(input.value)));
+        if (!Number.isFinite(target)) return;
+        if (!this.engine.spend(TERRAFORM_ORBIT_COST, 'terraform-orbit')) {
+          say(`migrer coûte ${TERRAFORM_ORBIT_COST} ⚙ (libre : ${this.engine.free})`, true);
+          return;
+        }
+        // Remplace toute migration en cours : la nouvelle cible fait foi.
+        this.world.remove(entity, OrbitMigration);
+        this.world.add(entity, OrbitMigration, { targetRadius: target });
+        this.world.emit({ kind: 'terraform-started', entity, tick: this.world.tick, data: { target } });
+        say(`−${TERRAFORM_ORBIT_COST} ⚙ : migration vers ${target} engagée`, false);
+      });
+      row.append(label, input);
+      box.appendChild(row);
+      box.appendChild(btn);
+      // Statut vivant : rayon actuel → cible pendant la migration.
+      const status = document.createElement('div');
+      status.className = 'hint';
+      box.appendChild(status);
+      this.readonlyFields.push({
+        el: status,
+        read: () => {
+          const m = this.world.get(entity, OrbitMigration);
+          const o = this.world.get(entity, Orbit);
+          if (!o) return '';
+          return m
+            ? `en migration : ${o.radius.toFixed(1)} → ${m.targetRadius}`
+            : `orbite stable à ${o.radius.toFixed(1)}`;
+        },
+      });
+    }
+
+    const temp = this.world.get(entity, Temperature);
+    if (temp) {
+      const row = document.createElement('div');
+      row.className = 'field';
+      const label = document.createElement('label');
+      label.textContent = 'température';
+      const mk = (text: string, delta: number): HTMLButtonElement => {
+        const b = document.createElement('button');
+        b.className = 'rule-action';
+        b.textContent = text;
+        b.addEventListener('click', () => {
+          if (!this.engine.spend(TERRAFORM_TEMP_COST, 'terraform-temp')) {
+            say(`ce geste coûte ${TERRAFORM_TEMP_COST} ⚙ (libre : ${this.engine.free})`, true);
+            return;
+          }
+          const t = this.world.get(entity, Temperature);
+          if (t) t.current = Math.max(0, t.current + delta);
+          say(`−${TERRAFORM_TEMP_COST} ⚙ : température ${delta > 0 ? 'poussée' : 'abaissée'}`, false);
+        });
+        return b;
+      };
+      row.append(
+        label,
+        mk(`+${TERRAFORM_TEMP_STEP}° (${TERRAFORM_TEMP_COST} ⚙)`, TERRAFORM_TEMP_STEP),
+        mk(`−${TERRAFORM_TEMP_STEP}° (${TERRAFORM_TEMP_COST} ⚙)`, -TERRAFORM_TEMP_STEP),
+      );
+      box.appendChild(row);
+    }
+
+    this.root.appendChild(box);
   }
 
   private rebuildFate(): void {

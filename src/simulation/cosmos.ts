@@ -42,7 +42,9 @@ import {
   Velocity,
   Wanderer,
 } from './components.js';
+import { OrbitMigration } from './components.js';
 import { spawnPerson, spawnTree } from './archetypes.js';
+import type { UniverseTemperament } from './temperament.js';
 
 /** Rayon du disque où la matière condense (unités univers). */
 export const UNIVERSE_RADIUS = 550;
@@ -102,14 +104,22 @@ export function interventionCost(
 
 /** Température sous laquelle une planète compte comme "refroidie". */
 const COOLED_TEMP = 300;
-/** Zone habitable : bande de rayons d'orbite où l'eau peut se former. Sans
- *  elle, TOUTES les planètes refroidies finissent habitables (testé : 42/42)
- *  et l'émergence perd toute saillance. Éditable indirectement : déplacer
- *  l'orbite d'une planète (panneau divin) peut la faire entrer dans la zone. */
-export const HABITABLE_ORBIT_MIN = 100;
-export const HABITABLE_ORBIT_MAX = 220;
 const MAX_TREES_PER_PLANET = 60;
 const MAX_PEOPLE_PER_PLANET = 24;
+
+/**
+ * Terraformation : les actes divins LOURDS sur l'état présent d'un monde.
+ * Contrairement aux petits édits (position d'une personne), déplacer une
+ * orbite ou changer la température d'une planète se PAIE — et l'orbite ne se
+ * téléporte pas : elle migre (voir orbitMigration), le geste se regarde.
+ * La zone habitable dépendant du tempérament, la terraformation est LE
+ * levier pour amener un monde là où l'eau peut naître.
+ */
+export const TERRAFORM_ORBIT_COST = 6;
+export const TERRAFORM_TEMP_COST = 3;
+export const TERRAFORM_TEMP_STEP = 200;
+/** Vitesse de migration d'orbite (unités de rayon par tick). */
+export const ORBIT_MIGRATION_RATE = 0.06;
 
 // --- Petites requêtes réutilisées par les règles, jalons et tests ---
 
@@ -176,10 +186,11 @@ export function defineCosmos(
   world: World,
   fate: FateQueue,
   rng: Rng,
+  temperament: UniverseTemperament,
   options: CosmosOptions = {},
 ): Cosmos {
   const hazardsEnabled = options.hazards ?? true;
-  defineRules(engine);
+  defineRules(engine, temperament);
   defineMilestones(engine);
 
   // ================================================================
@@ -528,7 +539,12 @@ export function defineCosmos(
         const chem = w.get(planet, Chemistry);
         if (!chem || chem.richness < 1) continue;
         const orbit = w.get(planet, Orbit);
-        if (!orbit || orbit.radius < HABITABLE_ORBIT_MIN || orbit.radius > HABITABLE_ORBIT_MAX) continue;
+        if (
+          !orbit ||
+          orbit.radius < temperament.habitableOrbitMin ||
+          orbit.radius > temperament.habitableOrbitMax
+        )
+          continue;
         let lake: EntityId | null = null;
         for (const [le, ls] of w.query(Species)) {
           if (ls.kind === 'lake' && w.get(le, OnPlanet)?.planet === planet) {
@@ -710,12 +726,14 @@ export function defineCosmos(
         return;
       }
       if (tick < nextHazardRoll) return;
-      nextHazardRoll = tick + rng.int(4000, 8000);
+      // La cadence est un trait du TEMPÉRAMENT : un Essaim hostile frappe
+      // deux fois plus souvent qu'un Univers clément.
+      nextHazardRoll = tick + rng.int(temperament.hazardIntervalMin, temperament.hazardIntervalMax);
 
       // Le drame vise la vie : un monde vivant en priorité, sinon au hasard.
       const living = livingPlanets(w);
       const roll = rng.next();
-      if (roll < 0.5) {
+      if (roll < temperament.asteroidWeight) {
         // --- Astéroïde ---
         const target = pick(living) ?? pick(planets);
         if (target === null) return;
@@ -733,7 +751,7 @@ export function defineCosmos(
         const pos = w.getRequired(asteroid, Position);
         w.add(asteroid, Hazard, { eventId, target, bornTick: tick, fromX: pos.x, fromY: pos.y, impactTick });
         w.emit({ kind: 'hazard-announced', entity: target, tick, data: { hazard: FATE_IMPACT, atTick: impactTick } });
-      } else if (roll < 0.8) {
+      } else if (roll < temperament.asteroidWeight + temperament.droughtWeight) {
         // --- Sécheresse : vise un monde qui a une mer ---
         const withLake = planets.filter((p) => findLakeOf(w, p) !== null);
         const target = pick(withLake.filter((p) => living.includes(p))) ?? pick(withLake);
@@ -861,6 +879,68 @@ export function defineCosmos(
     return null;
   }
 
+  // ================================================================
+  // TERRAFORMATION — migration d'orbite. Le rayon glisse vers sa cible tick
+  // par tick ; la vitesse angulaire suit la loi de capture (0.9/r) et la
+  // phase est recalée à chaque pas pour que la position reste CONTINUE :
+  // le monde spirale, il ne saute jamais.
+  // ================================================================
+  const orbitMigration: System = {
+    name: 'orbit-migration',
+    update(w, tick): void {
+      for (const [planet, migration] of w.query(OrbitMigration)) {
+        const orbit = w.get(planet, Orbit);
+        if (!orbit) {
+          w.remove(planet, OrbitMigration);
+          continue;
+        }
+        const delta = migration.targetRadius - orbit.radius;
+        const step = Math.sign(delta) * Math.min(Math.abs(delta), ORBIT_MIGRATION_RATE);
+        const currentAngle = orbit.phase + orbit.angularSpeed * tick;
+        orbit.radius += step;
+        orbit.angularSpeed = 0.9 / orbit.radius;
+        orbit.phase = currentAngle - orbit.angularSpeed * tick;
+        if (Math.abs(migration.targetRadius - orbit.radius) < 0.01) {
+          orbit.radius = migration.targetRadius;
+          w.remove(planet, OrbitMigration);
+          w.emit({ kind: 'terraform-complete', entity: planet, tick });
+        }
+      }
+    },
+  };
+
+  // ================================================================
+  // ÉTOILE VORACE — trait de tempérament : les orbites décroissent, tout
+  // finit par tomber dans l'étoile. La migration (payante) lutte contre la
+  // décroissance (gratuite et inexorable) : c'est le bras de fer du run.
+  // ================================================================
+  const orbitDecay: System = {
+    name: 'orbit-decay',
+    update(w, tick): void {
+      for (const [planet, s] of w.query(Species)) {
+        if (s.kind !== 'planet') continue;
+        const orbit = w.get(planet, Orbit);
+        if (!orbit) continue;
+        orbit.radius -= temperament.orbitDecayPerTick;
+        const starSize = orbit.center !== 0 ? (w.get(orbit.center, Size)?.size ?? 6) : 6;
+        if (orbit.radius <= starSize + 3) {
+          // Le monde est avalé — avec tout ce qui vivait dessus.
+          let souls = 0;
+          for (const [e, es] of w.query(OnPlanet)) {
+            if (es.planet !== planet) continue;
+            const kind = w.get(e, Species)?.kind;
+            if (kind === 'person' || kind === 'tree') souls++;
+            w.destroyEntity(e);
+          }
+          const sm = orbit.center !== 0 ? w.get(orbit.center, Mass) : undefined;
+          if (sm) sm.mass += w.get(planet, Mass)?.mass ?? 0;
+          w.emit({ kind: 'planet-consumed', entity: planet, tick, data: { souls } });
+          w.destroyEntity(planet);
+        }
+      }
+    },
+  };
+
   const systems: System[] = [
     gated(engine, RULE_MATTER, condensation),
     gated(engine, RULE_GRAVITY, gravityDrift),
@@ -871,11 +951,13 @@ export function defineCosmos(
     gated(engine, RULE_CONDITIONS, lifeConditions),
     gated(engine, RULE_LIFE, life),
   ];
+  systems.push(orbitMigration);
+  if (temperament.orbitDecayPerTick > 0) systems.push(orbitDecay);
   if (hazardsEnabled) systems.push(hazardRoller, hazardMover);
   return { systems };
 }
 
-function defineRules(engine: RuleEngine): void {
+function defineRules(engine: RuleEngine, temperament: UniverseTemperament): void {
   engine.define({
     id: RULE_TIME,
     label: 'Temps',
@@ -899,9 +981,11 @@ function defineRules(engine: RuleEngine): void {
     requires: [RULE_SPACE],
     cost: 3,
     params: [
-      { key: 'rate', label: 'condensation /100 ticks', default: 8, min: 1, max: 40, step: 1 },
+      // Les défauts viennent du TEMPÉRAMENT : un univers "Matière rare" naît
+      // avec un budget de masse famélique — c'est sa donne, pas une règle à part.
+      { key: 'rate', label: 'condensation /100 ticks', default: temperament.matterRate, min: 1, max: 40, step: 1 },
       { key: 'max', label: 'particules simultanées', default: 160, min: 20, max: 400, step: 10 },
-      { key: 'massBudget', label: 'masse totale de l\'univers', default: 900, min: 200, max: 2500, step: 50 },
+      { key: 'massBudget', label: 'masse totale de l\'univers', default: temperament.matterMassBudget, min: 200, max: 2500, step: 50 },
     ],
   });
   engine.define({
@@ -943,7 +1027,7 @@ function defineRules(engine: RuleEngine): void {
   engine.define({
     id: RULE_CONDITIONS,
     label: 'Conditions de Vie',
-    description: "L'eau se forme sur les planètes riches en chimie de la zone tempérée (orbite 100–220).",
+    description: `L'eau se forme sur les planètes riches en chimie de la zone tempérée (orbite ${temperament.habitableOrbitMin}–${temperament.habitableOrbitMax}).`,
     requires: [RULE_CHEMISTRY],
     cost: 2,
     params: [{ key: 'waterGrowth', label: 'montée des eaux /tick', default: 0.06, min: 0.01, max: 0.5, step: 0.01 }],

@@ -38,7 +38,18 @@ npm run build    # type-check strict + bundle de production
 4. **Arbitrez.** Chaque règle active coûte du calcul ; la capacité augmente
    quand l'univers franchit un jalon observable. Deux dilemmes sont calibrés :
    à Fusion et à Vie, il faut couper un processus pour financer le suivant.
-5. **Défendez.** L'univers écrit ses propres destins hostiles : astéroïdes
+5. **Lisez la donne.** Chaque seed tire un *tempérament* d'univers, annoncé
+   dès le Vide (panneau violet) : Univers clément, Étoile vorace (les orbites
+   décroissent — tout finit avalé), Zone glacée (la zone tempérée est à
+   240–380 : terraformez), Matière rare (budget de masse famélique), Essaim
+   hostile (astéroïdes fréquents). Même seed = même univers ; `?seed=N` dans
+   l'URL, bouton « ↻ nouvel univers » pour retirer.
+6. **Terraformez.** Sur une planète sélectionnée, la section Terraformation
+   permet de MIGRER son orbite (6 ⚙ — le monde spirale lentement vers sa
+   cible, sans téléportation) et de pousser sa température (±200°, 3 ⚙).
+   C'est le levier pour amener un monde dans la zone tempérée, esquiver une
+   éruption, ou lutter contre une étoile vorace.
+7. **Défendez.** L'univers écrit ses propres destins hostiles : astéroïdes
    (trajectoire pointillée + compte à rebours), sécheresses, éruptions —
    annoncés longtemps à l'avance dans le journal ET dans la timeline de leur
    cible. Trois réponses possibles : payer pour réécrire le destin (annuler
@@ -136,10 +147,14 @@ tests/              tests console (node --test), dont la genèse complète
 - **Masse finie** : la condensation ralentit à mesure que la masse totale
   approche `masse totale de l'univers` (paramètre) — sans ce frein, 200
   planètes au tick 53 000 (vécu).
-- **Zone habitable** : l'eau ne se forme que sur les orbites 100–220 — sans
-  elle, toutes les planètes refroidies deviennent habitables et l'émergence
-  perd sa saillance. Déplacer l'orbite d'une planète (panneau divin) peut
-  l'y faire entrer : terraformation par édition d'orbite.
+- **Zone habitable** : l'eau ne se forme que dans une bande d'orbites (définie
+  par le tempérament) — sans elle, toutes les planètes refroidies deviennent
+  habitables et l'émergence perd sa saillance. La terraformation (migration
+  d'orbite payante et progressive) est le moyen d'y amener un monde.
+- **Tempéraments** (`temperament.ts`) : la seed tire une donne parmi cinq —
+  des DONNÉES pures (zone habitable, budget de masse, cadence des aléas,
+  décroissance d'orbite) lues par le contenu, jamais de logique dédiée.
+  L'ordre optimal d'activation des règles change avec la donne.
 
 ## Notes pour le portage Godot
 

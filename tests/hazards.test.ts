@@ -62,7 +62,7 @@ function craftLivingWorld(world: World): { planet: EntityId; lake: EntityId } {
 }
 
 test('une menace est annoncée, visible dans la timeline de la cible, puis se réalise', () => {
-  const s = buildVoidScenario(31); // hazards actifs par défaut
+  const s = buildVoidScenario(31, { temperamentId: 'calm' }); // hazards actifs par défaut
   const { world, fate } = s;
   const { planet } = craftLivingWorld(world);
   const announced: string[] = [];
@@ -87,7 +87,7 @@ test('une menace est annoncée, visible dans la timeline de la cible, puis se r�
 });
 
 test('l\'impact d\'astéroïde efface la vie, laisse un cratère, mais le potentiel demeure', () => {
-  const s = buildVoidScenario(7, { hazards: false }); // déterminisme : on écrit la menace nous-mêmes
+  const s = buildVoidScenario(7, { hazards: false, temperamentId: 'calm' }); // déterminisme : on écrit la menace nous-mêmes
   const { world, fate } = s;
   const { planet } = craftLivingWorld(world);
   assert.equal(countKind(world, 'person'), 6);
@@ -103,7 +103,7 @@ test('l\'impact d\'astéroïde efface la vie, laisse un cratère, mais le potent
 });
 
 test('annuler la menace coûte du calcul libre, dévie le corps, et le calcul se régénère', () => {
-  const s = buildVoidScenario(7, { hazards: false });
+  const s = buildVoidScenario(7, { hazards: false, temperamentId: 'calm' });
   const { world, fate, engine } = s;
   engine.capacity = 30;
   const { planet } = craftLivingWorld(world);
@@ -146,7 +146,7 @@ test('imminent coûte plus cher que lointain, annuler plus cher que replanifier'
 });
 
 test('spend refuse au-delà du calcul libre', () => {
-  const s = buildVoidScenario(7, { hazards: false });
+  const s = buildVoidScenario(7, { hazards: false, temperamentId: 'calm' });
   const { world, engine } = s;
   engine.activate(RULE_TIME, world); // 2
   engine.activate(RULE_SPACE, world); // 1 → libre 7
@@ -158,7 +158,7 @@ test('spend refuse au-delà du calcul libre', () => {
 
 test('contre-jeu : faire monter les eaux avant la sécheresse évite les morts', () => {
   const run = (pumpWater: boolean): number => {
-    const s = buildVoidScenario(7, { hazards: false });
+    const s = buildVoidScenario(7, { hazards: false, temperamentId: 'calm' });
     const { world, fate, engine } = s;
     engine.capacity = 100;
     // Chaîne minimale pour que la règle Conditions soit activable et agisse.
