@@ -25,6 +25,7 @@ import {
   Position,
   Size,
   Species,
+  StellarClass,
   Temperature,
   Wanderer,
 } from '../simulation/components.js';
@@ -117,6 +118,8 @@ const EDITABLE_COMPONENTS: ComponentSpec[] = [
     { key: 'coolingPerTick', label: 'refroidissement/tick' },
   ]),
   spec(Chemistry, [{ key: 'richness', label: 'richesse chimique', set: direct(erase(Chemistry), 'richness'), step: 0.05 }]),
+  // Lecture seule : la classe d'une étoile est scellée à son allumage.
+  spec(StellarClass, [{ key: 'luminosity', label: 'luminosité (échelle de zone)' }]),
 ];
 
 const FATE_LABELS: Record<string, string> = {
@@ -129,6 +132,8 @@ const FATE_LABELS: Record<string, string> = {
   'hazard-impact': '☄ IMPACT',
   'hazard-drought': '☀ Sécheresse',
   'hazard-flare': '☀ Éruption',
+  supernova: '★ SUPERNOVA',
+  'star-death': 'Extinction',
 };
 
 /** Une ligne champ éditable : synchronisée chaque frame SAUF pendant la saisie. */

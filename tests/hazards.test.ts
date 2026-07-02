@@ -31,6 +31,12 @@ import type { EntityId, World } from '../src/simulation/ecs.js';
 
 /** Fabrique un monde vivant à la main : on teste les menaces, pas la genèse. */
 function craftLivingWorld(world: World): { planet: EntityId; lake: EntityId } {
+  // Depuis la Phase A, l'eau exige une étoile VIVANTE au centre de l'orbite :
+  // le monde artisanal a donc son soleil (jaune, luminosité 1).
+  const sun = world.createEntity();
+  world.add(sun, Species, { kind: 'star', label: 'Étoile jaune' });
+  world.add(sun, Position, { x: 0, y: 0 });
+  world.add(sun, Size, { size: 8 });
   const planet = world.createEntity();
   world.add(planet, Species, { kind: 'planet', label: 'Monde-Test' });
   world.add(planet, Position, { x: 100, y: 0 });
@@ -40,7 +46,7 @@ function craftLivingWorld(world: World): { planet: EntityId; lake: EntityId } {
   // Chimie mûre + orbite en zone tempérée : la règle Conditions peut agir
   // sur ce monde (nécessaire au test de contre-jeu de la sécheresse).
   world.add(planet, Chemistry, { richness: 2 });
-  world.add(planet, Orbit, { center: 0, radius: 150, angularSpeed: 0.0005, phase: 0 });
+  world.add(planet, Orbit, { center: sun, radius: 150, angularSpeed: 0.0005, phase: 0 });
   const lake = world.createEntity();
   world.add(lake, Species, { kind: 'lake', label: 'Mer' });
   world.add(lake, Position, { x: -150, y: 60 });
@@ -120,6 +126,7 @@ test('annuler la menace coûte du calcul libre, dévie le corps, et le calcul se
     fromX: 500,
     fromY: 500,
     impactTick: world.tick + 10_000,
+    shieldChecked: false,
   });
 
   // Loin : annuler coûte base(2) × proximité(1) × annulation(2) = 4.

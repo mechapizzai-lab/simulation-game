@@ -111,6 +111,34 @@ export interface IgnitingData {
 }
 export const Igniting = defineComponent<IgnitingData>('Igniting');
 
+/** Classe d'une étoile, figée à l'ALLUMAGE d'après la masse de l'amas : elle
+ *  décide de la couleur, de la luminosité (qui met à l'échelle la zone
+ *  habitable) et surtout du DESTIN — extinction tranquille ou supernova,
+ *  écrit dans la Fate Queue à la naissance de l'étoile. */
+export interface StellarClassData {
+  /** 'dwarf' (naine rouge) | 'yellow' (jaune) | 'giant' (géante bleue). */
+  className: string;
+  /** Facteur d'échelle de la zone habitable autour de cette étoile. */
+  luminosity: number;
+}
+export const StellarClass = defineComponent<StellarClassData>('StellarClass');
+
+/** Nature d'une planète, décidée à la capture d'après sa masse et sa distance :
+ *  'rocky' | 'gas' (géante gazeuse, inhabitable mais bouclier à astéroïdes) |
+ *  'ice' (monde gelé — habitable seulement s'il migre en zone tempérée). */
+export interface PlanetKindData {
+  kind: string;
+}
+export const PlanetKind = defineComponent<PlanetKindData>('PlanetKind');
+
+/** Onde de choc transitoire (supernova) : anneau en expansion, purement
+ *  visuel — les dégâts sont appliqués d'un coup à la réalisation. */
+export interface ShockwaveData {
+  bornTick: number;
+  maxRadius: number;
+}
+export const Shockwave = defineComponent<ShockwaveData>('Shockwave');
+
 /** Terraformation en cours : l'orbite MIGRE lentement vers son rayon cible
  *  (pas de téléportation — le geste divin se paie ET se regarde). */
 export interface OrbitMigrationData {
@@ -133,6 +161,8 @@ export interface HazardData {
    *  mover (une replanification déplace donc aussi le corps) : le rendu
    *  affiche le compte à rebours sans dépendre de la queue. */
   impactTick: number;
+  /** Le bouclier jovien n'a droit qu'à UN jet par astéroïde (à mi-course). */
+  shieldChecked: boolean;
 }
 export const Hazard = defineComponent<HazardData>('Hazard');
 

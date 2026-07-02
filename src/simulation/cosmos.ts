@@ -42,7 +42,7 @@ import {
   Velocity,
   Wanderer,
 } from './components.js';
-import { OrbitMigration } from './components.js';
+import { OrbitMigration, PlanetKind, Shockwave, StellarClass } from './components.js';
 import { spawnPerson, spawnTree } from './archetypes.js';
 import type { UniverseTemperament } from './temperament.js';
 
@@ -69,6 +69,43 @@ export const FATE_VILLAGE_BIRTH = 'village-birth';
 export const FATE_IMPACT = 'hazard-impact';
 export const FATE_DROUGHT = 'hazard-drought';
 export const FATE_FLARE = 'hazard-flare';
+export const FATE_SUPERNOVA = 'supernova';
+export const FATE_STAR_DEATH = 'star-death';
+
+/**
+ * Classes stellaires — figées à l'allumage d'après la masse. La première
+ * étoile d'un run naît de l'effondrement total (masse ~300-500) : c'est une
+ * GÉANTE BLEUE condamnée, sa supernova est écrite dès sa naissance et lisible
+ * dans sa timeline. Les étoiles de seconde génération (nées du disque
+ * résiduel) sont des naines et des jaunes, plus calmes : la cosmologie du jeu
+ * a naturellement deux actes. La stabilité n'est pas un état, c'est une lutte.
+ */
+export const STELLAR_CLASSES = {
+  dwarf: { maxMass: 60, luminosity: 0.6, lifeMin: 80_000, lifeMax: 150_000, death: FATE_STAR_DEATH },
+  yellow: { maxMass: 140, luminosity: 1.0, lifeMin: 30_000, lifeMax: 60_000, death: FATE_STAR_DEATH },
+  giant: { maxMass: Infinity, luminosity: 1.6, lifeMin: 8_000, lifeMax: 14_000, death: FATE_SUPERNOVA },
+} as const;
+
+/** Rayons de l'onde de choc d'une supernova : stérilisation puis
+ *  ENSEMENCEMENT — les éléments lourds qui rendront la chimie possible
+ *  viennent de là. La mort d'une étoile est aussi un engrais. */
+export const SHOCK_STERILIZE_RADIUS = 160;
+export const SHOCK_ENRICH_RADIUS = 450;
+/** Au-delà de cette masse, le vestige d'une supernova est un trou noir. */
+export const BLACK_HOLE_MASS = 220;
+/** Décroissance d'orbite autour d'un trou noir (unités/tick). */
+export const BLACK_HOLE_DECAY = 0.004;
+/** Rayon d'influence gravitationnelle d'un trou noir sur la matière libre.
+ *  Sans cette borne, le premier trou noir aspire TOUTE la condensation
+ *  future et l'univers meurt définitivement (vécu : 2 entités au tick
+ *  68 000). Au-delà, la matière s'organise entre elle : le second acte
+ *  (étoiles de nouvelle génération) reste possible — pas garanti. */
+export const BLACK_HOLE_PULL_RADIUS = 170;
+
+/** Seuils de nature planétaire à la capture (masse d'allumage par défaut : 24). */
+export const GAS_GIANT_MIN_MASS = 16;
+/** Chance qu'une géante gazeuse du système dévie un astéroïde en approche. */
+export const JOVIAN_SHIELD_CHANCE = 0.35;
 
 /**
  * Coût d'une intervention divine sur un destin déjà écrit.
@@ -86,6 +123,10 @@ const INTERVENTION_BASE: Record<string, number> = {
   [FATE_FLARE]: 2,
   [FATE_ABIOGENESIS]: 2,
   [FATE_IGNITION]: 1,
+  // Annuler une supernova est le plus grand miracle du jeu : 6 de loin,
+  // 18 à la dernière minute — l'étoile graciée devient éternelle.
+  [FATE_SUPERNOVA]: 3,
+  [FATE_STAR_DEATH]: 1,
   death: 1,
   maturity: 1,
   [FATE_FOREST_SEED]: 1,
@@ -246,12 +287,12 @@ export function defineCosmos(
     name: 'gravity',
     update(w): void {
       const strength = engine.param(RULE_GRAVITY, 'strength');
-      const attractors: { x: number; y: number; mass: number }[] = [];
+      const attractors: { x: number; y: number; mass: number; isBlackHole: boolean }[] = [];
       for (const [e, s] of w.query(Species)) {
-        if (s.kind !== 'clump' && s.kind !== 'star') continue;
+        if (s.kind !== 'clump' && s.kind !== 'star' && s.kind !== 'blackhole') continue;
         const pos = w.get(e, Position);
         const mass = w.get(e, Mass);
-        if (pos && mass) attractors.push({ x: pos.x, y: pos.y, mass: mass.mass });
+        if (pos && mass) attractors.push({ x: pos.x, y: pos.y, mass: mass.mass, isBlackHole: s.kind === 'blackhole' });
       }
       // Centre de masse des particules : l'attracteur de secours du début.
       let cx = 0;
@@ -286,6 +327,9 @@ export function defineCosmos(
         for (const a of attractors) {
           if (isClump && a.mass <= ownMass) continue;
           const d = (a.x - pos.x) ** 2 + (a.y - pos.y) ** 2;
+          // L'emprise d'un trou noir est LOCALE : au-delà de son rayon
+          // d'influence, la matière libre s'organise entre elle.
+          if (a.isBlackHole && d > BLACK_HOLE_PULL_RADIUS * BLACK_HOLE_PULL_RADIUS) continue;
           if (d > 0 && d < bestD) {
             bestD = d;
             tx = a.x;
@@ -361,11 +405,11 @@ export function defineCosmos(
           }
         }
       }
-      // Les étoiles absorbent ce qui les touche : particules et amas tombés
-      // dedans nourrissent l'étoile au lieu de s'empiler dessus.
+      // Les étoiles ET les trous noirs absorbent ce qui les touche : particules
+      // et amas tombés dedans les nourrissent au lieu de s'empiler dessus.
       const stars: [EntityId, { x: number; y: number }][] = [];
       for (const [e, s] of w.query(Species)) {
-        if (s.kind !== 'star') continue;
+        if (s.kind !== 'star' && s.kind !== 'blackhole') continue;
         const pos = w.get(e, Position);
         if (pos) stars.push([e, pos]);
       }
@@ -461,9 +505,20 @@ export function defineCosmos(
             const currentAngle = Math.atan2(pos.y - sy, pos.x - sx);
             const species = w.getRequired(e, Species);
             species.kind = 'planet';
-            species.label = `Monde-${planetCounter}`;
+            // La nature du monde se décide ici : massif → géante gazeuse ;
+            // sinon rocheux près de l'étoile, gelé au-delà de la zone tiède.
+            const luminosity = w.get(nearest, StellarClass)?.luminosity ?? 1;
+            const kind =
+              mass >= GAS_GIANT_MIN_MASS
+                ? 'gas'
+                : radius > temperament.habitableOrbitMax * luminosity * 1.4
+                  ? 'ice'
+                  : 'rocky';
+            w.add(e, PlanetKind, { kind });
+            species.label =
+              kind === 'gas' ? `Géante-${planetCounter}` : kind === 'ice' ? `Glace-${planetCounter}` : `Monde-${planetCounter}`;
             const size = w.get(e, Size);
-            if (size) size.size = Math.max(2.5, size.size * 1.6);
+            if (size) size.size = Math.max(2.5, size.size * (kind === 'gas' ? 2.1 : 1.6));
             w.add(e, Orbit, {
               center: nearest,
               radius,
@@ -486,12 +541,129 @@ export function defineCosmos(
     const size = w.get(event.entity, Size);
     if (!species || species.kind !== 'clump') return;
     species.kind = 'star';
-    species.label = 'Étoile';
     if (size) size.size = Math.max(6, size.size * 1.4);
     w.remove(event.entity, Igniting);
     w.remove(event.entity, Velocity);
-    w.emit({ kind: 'star-born', entity: event.entity, tick: w.tick });
+
+    // La classe est figée MAINTENANT, d'après la masse accumulée — et le
+    // destin de l'étoile s'écrit à sa naissance, comme celui des vivants.
+    const mass = w.get(event.entity, Mass)?.mass ?? 24;
+    const cls =
+      mass < STELLAR_CLASSES.dwarf.maxMass
+        ? { name: 'dwarf', label: 'Naine rouge', ...STELLAR_CLASSES.dwarf }
+        : mass < STELLAR_CLASSES.yellow.maxMass
+          ? { name: 'yellow', label: 'Étoile jaune', ...STELLAR_CLASSES.yellow }
+          : { name: 'giant', label: 'Géante bleue', ...STELLAR_CLASSES.giant };
+    species.label = cls.label;
+    w.add(event.entity, StellarClass, { className: cls.name, luminosity: cls.luminosity });
+    fate.schedule(w.tick + rng.int(cls.lifeMin, cls.lifeMax), event.entity, cls.death);
+    w.emit({ kind: 'star-born', entity: event.entity, tick: w.tick, data: { className: cls.name } });
   });
+
+  // --- Extinction tranquille (naines, jaunes) : l'étoile devient un vestige
+  // froid ; ses mondes gardent leur orbite mais perdent leur soleil. ---
+  fate.onKind(FATE_STAR_DEATH, (w, event) => {
+    const species = w.get(event.entity, Species);
+    if (!species || species.kind !== 'star') return;
+    species.kind = 'remnant';
+    species.label = 'Naine blanche';
+    const size = w.get(event.entity, Size);
+    if (size) size.size = Math.max(2, size.size * 0.35);
+    w.remove(event.entity, StellarClass);
+    w.emit({ kind: 'star-died', entity: event.entity, tick: w.tick });
+  });
+
+  // --- Supernova : stérilise près, ensemence loin, laisse un vestige — trou
+  // noir si l'étoile était assez massive. La mort est aussi un engrais. ---
+  fate.onKind(FATE_SUPERNOVA, (w, event) => {
+    const star = event.entity;
+    const species = w.get(star, Species);
+    const starPos = w.get(star, Position);
+    if (!species || species.kind !== 'star' || !starPos) return;
+    let casualties = 0;
+    let enriched = 0;
+    for (const [planet, s] of w.query(Species)) {
+      if (s.kind !== 'planet') continue;
+      const pos = w.get(planet, Position);
+      if (!pos) continue;
+      const d = Math.hypot(pos.x - starPos.x, pos.y - starPos.y);
+      if (d <= SHOCK_STERILIZE_RADIUS) {
+        for (const [e, es] of w.query(Species)) {
+          if (w.get(e, OnPlanet)?.planet !== planet) continue;
+          if (es.kind === 'person' || es.kind === 'tree') {
+            casualties++;
+            w.destroyEntity(e);
+          } else if (es.kind === 'lake') {
+            const ls = w.get(e, Size);
+            if (ls) ls.size = Math.max(10, ls.size * 0.2);
+          }
+        }
+        w.remove(planet, Habitable);
+        abiogenesisScheduled.delete(planet);
+        const t = w.get(planet, Temperature);
+        if (t) t.current += 600;
+      } else if (d <= SHOCK_ENRICH_RADIUS) {
+        // Les éléments lourds pleuvent : la chimie est OFFERTE par la mort
+        // de l'étoile (produit d'événement — pas besoin de la règle Chimie).
+        const chem = w.get(planet, Chemistry);
+        if (chem) chem.richness = Math.min(2, chem.richness + 0.8);
+        else w.add(planet, Chemistry, { richness: 0.8 });
+        enriched++;
+      }
+    }
+    const mass = w.get(star, Mass)?.mass ?? 0;
+    if (mass >= BLACK_HOLE_MASS) {
+      species.kind = 'blackhole';
+      species.label = 'Trou noir';
+      const size = w.get(star, Size);
+      if (size) size.size = Math.max(3, Math.cbrt(mass) * 0.8);
+    } else {
+      species.kind = 'remnant';
+      species.label = 'Étoile à neutrons';
+      const size = w.get(star, Size);
+      if (size) size.size = 2;
+    }
+    w.remove(star, StellarClass);
+    // L'anneau d'onde de choc, purement visuel, se dissipe tout seul.
+    const wave = w.createEntity();
+    w.add(wave, Species, { kind: 'shockwave', label: 'Onde de choc' });
+    w.add(wave, Position, { x: starPos.x, y: starPos.y });
+    w.add(wave, Size, { size: 1 }); // requis par le rendu ; le rayon vient de Shockwave
+    w.add(wave, Shockwave, { bornTick: w.tick, maxRadius: SHOCK_ENRICH_RADIUS });
+    w.emit({ kind: 'supernova', entity: star, tick: w.tick, data: { casualties, enriched, blackHole: mass >= BLACK_HOLE_MASS } });
+  });
+
+  /** Dissipation des ondes de choc + accrétion des trous noirs : les orbites
+   *  de leurs mondes décroissent, et ce qui tombe dedans les nourrit. */
+  const blackHoles: System = {
+    name: 'black-holes',
+    update(w, tick): void {
+      for (const [wave, sw] of w.query(Shockwave)) {
+        if (tick - sw.bornTick > 400) w.destroyEntity(wave);
+      }
+      for (const [planet, s] of w.query(Species)) {
+        if (s.kind !== 'planet') continue;
+        const orbit = w.get(planet, Orbit);
+        if (!orbit || orbit.center === 0) continue;
+        if (w.get(orbit.center, Species)?.kind !== 'blackhole') continue;
+        orbit.radius -= BLACK_HOLE_DECAY;
+        const bhSize = w.get(orbit.center, Size)?.size ?? 4;
+        if (orbit.radius <= bhSize + 3) {
+          let souls = 0;
+          for (const [e, es] of w.query(OnPlanet)) {
+            if (es.planet !== planet) continue;
+            const kind = w.get(e, Species)?.kind;
+            if (kind === 'person' || kind === 'tree') souls++;
+            w.destroyEntity(e);
+          }
+          const bm = w.get(orbit.center, Mass);
+          if (bm) bm.mass += w.get(planet, Mass)?.mass ?? 0;
+          w.emit({ kind: 'planet-consumed', entity: planet, tick, data: { souls } });
+          w.destroyEntity(planet);
+        }
+      }
+    },
+  };
 
   // ================================================================
   // REFROIDISSEMENT — intrinsèque aux corps chauds, PAS une règle : une
@@ -536,13 +708,21 @@ export function defineCosmos(
       const waterGrowth = engine.param(RULE_CONDITIONS, 'waterGrowth');
       for (const [planet, s] of w.query(Species)) {
         if (s.kind !== 'planet') continue;
+        // Une géante gazeuse ne porte pas d'eau ; un monde de glace, si — sa
+        // glace fond s'il migre en zone tempérée (terraformation narrative).
+        if (w.get(planet, PlanetKind)?.kind === 'gas') continue;
         const chem = w.get(planet, Chemistry);
         if (!chem || chem.richness < 1) continue;
         const orbit = w.get(planet, Orbit);
+        if (!orbit) continue;
+        // La zone tempérée dépend de l'ÉTOILE : une naine rouge la resserre,
+        // une géante bleue la repousse — et une étoile morte n'en a plus.
+        const centerSpecies = orbit.center !== 0 ? w.get(orbit.center, Species) : undefined;
+        if (centerSpecies?.kind !== 'star') continue;
+        const luminosity = w.get(orbit.center, StellarClass)?.luminosity ?? 1;
         if (
-          !orbit ||
-          orbit.radius < temperament.habitableOrbitMin ||
-          orbit.radius > temperament.habitableOrbitMax
+          orbit.radius < temperament.habitableOrbitMin * luminosity ||
+          orbit.radius > temperament.habitableOrbitMax * luminosity
         )
           continue;
         let lake: EntityId | null = null;
@@ -749,7 +929,15 @@ export function defineCosmos(
         });
         w.add(asteroid, Size, { size: 2 });
         const pos = w.getRequired(asteroid, Position);
-        w.add(asteroid, Hazard, { eventId, target, bornTick: tick, fromX: pos.x, fromY: pos.y, impactTick });
+        w.add(asteroid, Hazard, {
+          eventId,
+          target,
+          bornTick: tick,
+          fromX: pos.x,
+          fromY: pos.y,
+          impactTick,
+          shieldChecked: false,
+        });
         w.emit({ kind: 'hazard-announced', entity: target, tick, data: { hazard: FATE_IMPACT, atTick: impactTick } });
       } else if (roll < temperament.asteroidWeight + temperament.droughtWeight) {
         // --- Sécheresse : vise un monde qui a une mer ---
@@ -790,6 +978,28 @@ export function defineCosmos(
         const targetPos = w.get(hz.target, Position);
         if (!pos || !targetPos) continue;
         const progress = Math.min(1, Math.max(0, (tick - hz.bornTick) / (event.tick - hz.bornTick)));
+        // Bouclier jovien : à mi-course, UNE chance qu'une géante gazeuse du
+        // même système dévie l'astéroïde. Cultiver une géante est donc un
+        // choix défensif — la variété planétaire JOUE, elle ne décore pas.
+        if (!hz.shieldChecked && progress > 0.5) {
+          hz.shieldChecked = true;
+          const targetOrbit = w.get(hz.target, Orbit);
+          if (targetOrbit) {
+            let hasGiant = false;
+            for (const [g, gs] of w.query(PlanetKind)) {
+              if (gs.kind !== 'gas') continue;
+              if (w.get(g, Orbit)?.center === targetOrbit.center) {
+                hasGiant = true;
+                break;
+              }
+            }
+            if (hasGiant && rng.next() < JOVIAN_SHIELD_CHANCE) {
+              fate.cancel(hz.eventId);
+              w.emit({ kind: 'hazard-shielded', entity: hz.target, tick });
+              // le mover détruira le corps au prochain passage (événement disparu)
+            }
+          }
+        }
         pos.x = hz.fromX + (targetPos.x - hz.fromX) * progress;
         pos.y = hz.fromY + (targetPos.y - hz.fromY) * progress;
       }
@@ -951,9 +1161,12 @@ export function defineCosmos(
     gated(engine, RULE_CONDITIONS, lifeConditions),
     gated(engine, RULE_LIFE, life),
   ];
-  systems.push(orbitMigration);
+  systems.push(orbitMigration, blackHoles);
   if (temperament.orbitDecayPerTick > 0) systems.push(orbitDecay);
-  if (hazardsEnabled) systems.push(hazardRoller, hazardMover);
+  // Le TIRAGE d'aléas est optionnel (tests déterministes) ; le mover, lui,
+  // tourne toujours : un corps en vol vole, quelle que soit son origine.
+  if (hazardsEnabled) systems.push(hazardRoller);
+  systems.push(hazardMover);
   return { systems };
 }
 
@@ -1086,5 +1299,11 @@ function defineMilestones(engine: RuleEngine): void {
     label: 'Première vie',
     reward: 4,
     check: (w) => countKind(w, 'person') + countKind(w, 'tree') > 0,
+  });
+  engine.defineMilestone({
+    id: 'm-supernova',
+    label: 'Première supernova — l\'univers apprend la mort des étoiles',
+    reward: 3,
+    check: (w) => countKind(w, 'remnant') + countKind(w, 'blackhole') > 0,
   });
 }

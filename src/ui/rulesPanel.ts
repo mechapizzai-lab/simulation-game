@@ -121,6 +121,26 @@ export class RulesPanel {
         this.addLogEntry(`⛭ ${name()} : migration d'orbite engagée vers ${target}`);
       } else if (e.kind === 'terraform-complete') {
         this.addLogEntry(`⛭ ${name()} : orbite stabilisée`, true);
+      } else if (e.kind === 'supernova') {
+        const d = e.data as { casualties: number; enriched: number; blackHole: boolean };
+        this.addLogEntry(
+          `★ SUPERNOVA — ${d.casualties} vies soufflées, ${d.enriched} mondes ensemencés` +
+            (d.blackHole ? ' — un TROU NOIR demeure' : ''),
+          true,
+        );
+      } else if (e.kind === 'star-died') {
+        this.addLogEntry(`✧ ${name()} s'est éteinte — ses mondes n'ont plus de soleil`, true);
+      } else if (e.kind === 'star-born') {
+        const cls = (e.data as { className?: string } | undefined)?.className;
+        const label =
+          cls === 'giant'
+            ? 'une géante bleue — brillante et CONDAMNÉE (lisez sa timeline)'
+            : cls === 'dwarf'
+              ? 'une naine rouge, discrète et patiente'
+              : 'une étoile jaune, équilibrée';
+        this.addLogEntry(`✦ Une étoile s'allume : ${label}`, true);
+      } else if (e.kind === 'hazard-shielded') {
+        this.addLogEntry(`🛡 La géante gazeuse a dévié l'astéroïde : ${name()} est sauf`, true);
       } else if (e.kind === 'planet-consumed') {
         const souls = (e.data as { souls: number }).souls;
         this.addLogEntry(

@@ -18,9 +18,12 @@ import {
   Igniting,
   OnPlanet,
   Orbit,
+  PlanetKind,
   Position,
+  Shockwave,
   Size,
   Species,
+  StellarClass,
   Temperature,
 } from '../simulation/components.js';
 import { Rng } from '../simulation/rng.js';
@@ -33,16 +36,27 @@ export const SURFACE_TO_UNIVERSE = 0.02;
 const SURFACE_FADE_START = 8;
 const SURFACE_FADE_END = 30;
 
-/** La couleur d'une planète RACONTE son état : incandescente → refroidie →
- *  enrichie par la chimie → habitable. Le joueur lit l'émergence sans HUD. */
+/** La couleur d'une planète RACONTE sa nature et son état : géante gazeuse,
+ *  monde de glace, ou rocheuse incandescente → refroidie → chimie → habitable. */
 function planetColor(world: World, e: EntityId): string {
   if (world.has(e, Habitable)) return '#4a9d6f';
+  const kind = world.get(e, PlanetKind)?.kind;
+  if (kind === 'gas') return '#d9a066';
+  if (kind === 'ice') return '#cfe3ec';
   const chem = world.get(e, Chemistry);
   if (chem && chem.richness > 0.05) return '#a1793f';
   const t = world.get(e, Temperature)?.current ?? 0;
   if (t > 600) return '#e2603a';
   if (t > 300) return '#9a6f52';
   return '#7d8896';
+}
+
+/** Teintes du disque et du halo selon la classe stellaire. */
+function starTint(world: World, e: EntityId): { core: string; glow: string } {
+  const cls = world.get(e, StellarClass)?.className;
+  if (cls === 'dwarf') return { core: '#ffc4a3', glow: 'rgba(255, 140, 90, 0.85)' };
+  if (cls === 'giant') return { core: '#dbe9ff', glow: 'rgba(150, 190, 255, 0.9)' };
+  return { core: '#ffe9a8', glow: 'rgba(255, 220, 130, 0.9)' };
 }
 
 interface Star {
@@ -236,22 +250,61 @@ export class Renderer {
           ctx.stroke();
         }
       } else if (species.kind === 'star') {
+        const tint = starTint(world, entity);
         const glow = ctx.createRadialGradient(px, py, r * 0.3, px, py, r * 3);
-        glow.addColorStop(0, 'rgba(255, 220, 130, 0.9)');
-        glow.addColorStop(1, 'rgba(255, 220, 130, 0)');
+        glow.addColorStop(0, tint.glow);
+        glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = glow;
         ctx.beginPath();
         ctx.arc(px, py, r * 3, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = '#ffe9a8';
+        ctx.fillStyle = tint.core;
         ctx.beginPath();
         ctx.arc(px, py, r, 0, Math.PI * 2);
         ctx.fill();
+      } else if (species.kind === 'blackhole') {
+        // Anneau d'accrétion orange, cœur plus noir que l'espace : l'absence.
+        ctx.strokeStyle = 'rgba(255, 150, 60, 0.75)';
+        ctx.lineWidth = Math.max(1.5, r * 0.35);
+        ctx.beginPath();
+        ctx.arc(px, py, r * 1.4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (species.kind === 'remnant') {
+        ctx.fillStyle = 'rgba(210, 220, 240, 0.85)';
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(1.5, r), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (species.kind === 'shockwave') {
+        const sw = world.get(entity, Shockwave);
+        if (sw) {
+          const age = (world.tick - sw.bornTick) / 400;
+          const radius = sw.maxRadius * Math.min(1, age) * camera.zoom;
+          ctx.strokeStyle = `rgba(255, 200, 120, ${Math.max(0, 0.7 * (1 - age))})`;
+          ctx.lineWidth = Math.max(1, 6 * (1 - age));
+          ctx.beginPath();
+          ctx.arc(px, py, radius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       } else if (species.kind === 'planet') {
         ctx.fillStyle = planetColor(world, entity);
         ctx.beginPath();
         ctx.arc(px, py, r, 0, Math.PI * 2);
         ctx.fill();
+        // Bandes des géantes gazeuses : la nature du monde se lit d'un regard.
+        if (world.get(entity, PlanetKind)?.kind === 'gas') {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(px, py, r, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.fillStyle = 'rgba(140, 90, 45, 0.35)';
+          ctx.fillRect(px - r, py - r * 0.55, r * 2, r * 0.3);
+          ctx.fillRect(px - r, py + r * 0.1, r * 2, r * 0.22);
+          ctx.restore();
+        }
         // L'échec laisse une trace : la cicatrice d'impact reste visible.
         if (world.has(entity, Crater)) {
           ctx.fillStyle = 'rgba(30, 22, 18, 0.55)';
@@ -319,7 +372,7 @@ export class Renderer {
     for (const [entity, species] of world.query(Species)) {
       // Tout corps céleste est inspectable — y compris un amas, dont la
       // timeline montre l'allumage à venir.
-      if (!['planet', 'star', 'clump', 'particle', 'asteroid'].includes(species.kind)) continue;
+      if (!['planet', 'star', 'clump', 'particle', 'asteroid', 'blackhole', 'remnant'].includes(species.kind)) continue;
       const pos = world.get(entity, Position);
       const size = world.get(entity, Size);
       if (!pos || !size) continue;

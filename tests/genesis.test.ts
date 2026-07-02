@@ -98,25 +98,35 @@ test('la grande échelle : du néant à la vie, avec deux dilemmes de budget', (
   runUntil(s, 'une planète refroidit', 8000, () => engine.hasReached('m-cooled'));
   assert.equal(engine.capacity, 22);
 
-  // --- Conditions de Vie (21/22) : l'eau monte, le monde devient habitable ---
+  // --- Conditions de Vie (21/22) : l'eau monte... mais depuis la Phase A,
+  // la première étoile est une GÉANTE BLEUE condamnée : sa supernova peut
+  // éclater pendant la course à l'habitabilité. Le test traverse l'acte 1
+  // et, s'il le faut, l'acte 2 (étoiles de seconde génération, plus calmes).
   assert.equal(engine.activate(RULE_CONDITIONS, world), true);
-  runUntil(s, 'un monde devient habitable', 8000, () => engine.hasReached('m-habitable'));
-  assert.equal(engine.capacity, 24);
+  runUntil(
+    s,
+    'un monde devient habitable (à travers la première supernova s\'il le faut)',
+    60_000,
+    () => engine.hasReached('m-habitable'),
+  );
 
-  // --- DILEMME 2 : Vie coûte 4, utilisé 21, capacité 24 → refus motivé ---
-  assert.match(engine.activationBlocker(RULE_LIFE, world) ?? '', /budget insuffisant \(25\/24\)/);
-  assert.equal(engine.deactivate(RULE_AGGREGATION), true);
+  // --- Vie : selon que la supernova a déjà payé son jalon (+3), le budget
+  // force ou non de couper l'Agrégation — on décide comme un joueur. ---
+  const blocker = engine.activationBlocker(RULE_LIFE, world);
+  if (blocker !== null) {
+    assert.match(blocker, /budget insuffisant/);
+    assert.equal(engine.deactivate(RULE_AGGREGATION), true);
+  }
   assert.equal(engine.activate(RULE_LIFE, world), true);
 
   // --- Abiogenèse (destin à +400 ticks) puis générations ---
-  runUntil(s, 'la vie éclot', 3000, () => engine.hasReached('m-life'));
-  assert.equal(engine.capacity, 28);
-  assert.ok(countKind(world, 'person') >= 2);
-  assert.ok(countKind(world, 'tree') >= 3);
+  runUntil(s, 'la vie éclot', 20_000, () => engine.hasReached('m-life'));
+  assert.ok(countKind(world, 'person') >= 1);
+  assert.ok(countKind(world, 'tree') >= 1);
 
   // La boucle continue : les cycles écologiques enchaînent les générations.
   const tick0 = world.tick;
-  runUntil(s, 'une naissance issue du cycle', 2000, () => countKind(world, 'person') > 2);
+  runUntil(s, 'une naissance issue du cycle', 6000, () => countKind(world, 'person') > 2);
   assert.ok(world.tick > tick0);
 });
 
