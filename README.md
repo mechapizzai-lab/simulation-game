@@ -74,6 +74,17 @@ npm run build    # type-check strict + bundle de production
    planète de l'éruption), ou laisser faire — l'échec laisse un cratère, mais
    le potentiel demeure : l'eau peut remonter, la vie peut renaître.
 
+8. **Écrivez.** Le terminal divin (en bas) compile vos phrases en actes du
+   jeu : « que la lumière soit », « code la gravité et code l'agrégation »,
+   « condense de la matière au nord », « pousse Monde-2 dans la zone
+   tempérée », « annule la supernova », « repousse l'impact de 2000 ticks »,
+   « double la montée des eaux »... Tout patch payant est AFFICHÉ avec son
+   coût avant application (Entrée pour confirmer). Contrat fondamental : le
+   compilateur traduit l'intention, LA SIMULATION SEULE décide des
+   conséquences — il ne promet jamais un résultat. Tapez « aide » pour le
+   vocabulaire (v1 hors-ligne ; la v2 branchera une vraie IA sur le même
+   espace d'actions).
+
 ## Les règles du méta-jeu (contrats de design, documentés dans le code)
 
 ### Règle = processus, entité = produit

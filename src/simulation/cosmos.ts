@@ -72,6 +72,13 @@ export const FATE_FLARE = 'hazard-flare';
 export const FATE_SUPERNOVA = 'supernova';
 export const FATE_STAR_DEATH = 'star-death';
 export const RULE_BIGBANG = 'bigbang';
+
+/** Acte divin : condenser un nuage de matière à un endroit précis. Payant —
+ *  contrairement à la règle Matière (un processus), c'est un GESTE ponctuel.
+ *  La masse offerte compte dans le budget de masse : le robinet naturel se
+ *  freinera d'autant — l'univers reste fini. */
+export const CONJURE_MATTER_COST = 4;
+export const CONJURE_MATTER_COUNT = 30;
 /** Au-delà de cette distance, l'expansion emporte la matière hors de
  *  l'existence (et libère son budget de masse) : sans Gravité codée, un
  *  Big Bang se disperse — l'univers rate son départ, sans réussite forcée. */
@@ -137,6 +144,19 @@ const INTERVENTION_BASE: Record<string, number> = {
   [FATE_FOREST_SEED]: 1,
   [FATE_VILLAGE_BIRTH]: 1,
 };
+
+export function conjureMatter(world: World, rng: Rng, x: number, y: number, count = CONJURE_MATTER_COUNT): void {
+  for (let i = 0; i < count; i++) {
+    const angle = rng.range(0, Math.PI * 2);
+    const r = rng.range(0, 35);
+    const e = world.createEntity();
+    world.add(e, Species, { kind: 'particle', label: 'Particule' });
+    world.add(e, Position, { x: x + Math.cos(angle) * r, y: y + Math.sin(angle) * r });
+    world.add(e, Velocity, { vx: rng.range(-0.1, 0.1), vy: rng.range(-0.1, 0.1) });
+    world.add(e, Mass, { mass: 1 });
+    world.add(e, Size, { size: 1 });
+  }
+}
 
 export function interventionCost(
   kind: string,

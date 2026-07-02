@@ -13,6 +13,7 @@ import { bindInput } from './rendering/input.js';
 import { Hud } from './ui/hud.js';
 import { GodPanel } from './ui/panel.js';
 import { RulesPanel } from './ui/rulesPanel.js';
+import { Terminal } from './ui/terminal.js';
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
@@ -42,6 +43,18 @@ const rulesPanel = new RulesPanel(
   },
 );
 const godPanel = new GodPanel(document.getElementById('panel') as HTMLElement, world, fate, engine);
+// Le terminal divin : le joueur ÉCRIT ce qui doit arriver ; le compilateur
+// traduit en actes payants ; la simulation décide des conséquences.
+new Terminal(document.getElementById('terminal') as HTMLElement, {
+  world,
+  engine,
+  fate,
+  rng: scenario.rng,
+  temperament: scenario.temperament,
+  setSpeed: (s) => {
+    clock.speed = s;
+  },
+});
 
 const viewport = { width: 0, height: 0 };
 function resize(): void {

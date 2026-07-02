@@ -121,6 +121,27 @@
     #panel .fate-event input { width: 76px; }
     #panel .fate-event button { background: none; border: none; color: #e06c6c; cursor: pointer; font-size: 15px; }
     #panel .hint { color: var(--text-dim); font-size: 12px; font-style: italic; }
+
+    #terminal {
+      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+      width: 620px; max-width: calc(100% - 700px);
+      background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 10px;
+      padding: 8px 10px; font-family: 'Cascadia Code', 'Fira Code', monospace;
+    }
+    #terminal .term-log { max-height: 150px; overflow-y: auto; margin-bottom: 6px; }
+    #terminal .term-line { font-size: 12px; padding: 1px 0; white-space: pre-wrap; }
+    #terminal .term-line.user { color: var(--accent); }
+    #terminal .term-line.sys { color: var(--text-dim); font-style: italic; }
+    #terminal .term-line.patch { color: #a9c1ff; }
+    #terminal .term-line.result { color: #8fd49a; }
+    #terminal .term-line.error { color: #e06c6c; }
+    #terminal .term-form { display: flex; gap: 8px; align-items: center; }
+    #terminal .term-prompt { color: var(--accent); font-weight: 700; }
+    #terminal input {
+      flex: 1; background: #10161f; color: var(--text); border: 1px solid var(--panel-border);
+      border-radius: 6px; padding: 5px 9px; font: inherit; font-size: 13px;
+    }
+    #terminal input:focus { outline: 1px solid var(--accent); }
   </style>
 </head>
 <body>
@@ -128,6 +149,7 @@
   <div id="hud"></div>
   <aside id="rules"></aside>
   <aside id="panel"></aside>
+  <div id="terminal"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
