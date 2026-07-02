@@ -83,6 +83,20 @@ export function spawnTree(
   return e;
 }
 
+/** Un plan d'eau qui S'ÉTEND : Size grandit tick par tick — on voit une mer
+ *  se former sur des milliers de ticks. Pas de Lifespan : l'eau ne meurt pas. */
+export function spawnLake(
+  world: World,
+  opts: { x: number; y: number; size: number; maxSize: number; growthPerTick: number },
+): EntityId {
+  const e = world.createEntity();
+  world.add(e, Species, { kind: 'lake', label: 'Mer intérieure' });
+  world.add(e, Position, { x: opts.x, y: opts.y });
+  world.add(e, Size, { size: opts.size });
+  world.add(e, GrowthRate, { perTick: opts.growthPerTick, maxSize: opts.maxSize });
+  return e;
+}
+
 export function spawnStar(world: World, opts: { x: number; y: number; size: number }): EntityId {
   const e = world.createEntity();
   world.add(e, Species, { kind: 'star', label: 'Étoile' });

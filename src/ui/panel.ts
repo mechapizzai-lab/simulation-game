@@ -94,8 +94,8 @@ const EDITABLE_COMPONENTS: ComponentSpec[] = [
 const FATE_LABELS: Record<string, string> = {
   [FATE_DEATH]: 'Mort',
   [FATE_MATURITY]: 'Maturité',
-  'spawn-tree': 'Germination',
-  'lake-full': 'Mer formée',
+  'forest-seed': 'Germination',
+  'village-birth': 'Naissance',
 };
 
 /** Une ligne champ éditable : synchronisée chaque frame SAUF pendant la saisie. */
