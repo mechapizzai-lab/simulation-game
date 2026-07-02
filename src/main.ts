@@ -9,6 +9,7 @@ import { Camera } from './rendering/camera.js';
 import { Renderer } from './rendering/renderer.js';
 import { bindInput } from './rendering/input.js';
 import { Hud } from './ui/hud.js';
+import { GodPanel } from './ui/panel.js';
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
@@ -32,12 +33,15 @@ const renderer = new Renderer(ctx, canvas);
 /** Seule Gaïa porte de la vie pour l'instant ; la liste est prête pour plus. */
 const surfacePlanets = [scenario.gaia];
 
+const panel = new GodPanel(
+  document.getElementById('panel') as HTMLElement,
+  scenario.world,
+  scenario.fate,
+);
+
 bindInput(canvas, camera, (px, py) => {
-  const hit = renderer.pick(scenario.world, camera, px, py, surfacePlanets);
-  // La sélection alimente le panneau divin (étape 5).
-  selected = hit;
+  panel.select(renderer.pick(scenario.world, camera, px, py, surfacePlanets));
 });
-let selected: number | null = null;
 
 let lastTime = performance.now();
 function frame(now: number): void {
@@ -46,8 +50,9 @@ function frame(now: number): void {
   clock.advance(dt);
   camera.update(dt, scenario.world, surfacePlanets);
 
-  renderer.render(scenario.world, camera, surfacePlanets, selected);
+  renderer.render(scenario.world, camera, surfacePlanets, panel.selected);
   hud.update();
+  panel.update();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
