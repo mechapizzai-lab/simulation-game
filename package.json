@@ -1,0 +1,18 @@
+{
+  "name": "simulation-game",
+  "version": "0.1.0",
+  "description": "Prototype web d'un god game sur la théorie de la simulation — ECS + Fate Queue + rendu Canvas multi-échelle",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "tsc -p tsconfig.test.json && node --test \".test-dist/tests/*.test.js\""
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.3"
+  }
+}
