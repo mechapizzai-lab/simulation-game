@@ -75,6 +75,15 @@ export interface SpeciesData {
 }
 export const Species = defineComponent<SpeciesData>('Species');
 
+/** Rattache une entité de surface à sa planète : sa Position s'exprime alors
+ *  en coordonnées LOCALES de la surface. Le rendu ancre cette surface sur la
+ *  position orbitale de la planète — c'est ce qui permet le zoom continu
+ *  univers → sol sans changement de scène. */
+export interface OnPlanetData {
+  planet: number;
+}
+export const OnPlanet = defineComponent<OnPlanetData>('OnPlanet');
+
 /** Errance simple au sol : l'entité choisit un cap et le garde quelques ticks.
  *  L'état du "cerveau" vit dans le component (pas dans le system) pour rester
  *  sérialisable — indispensable pour sauvegarder/charger, et pour Godot. */
