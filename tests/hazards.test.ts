@@ -155,12 +155,12 @@ test('imminent coûte plus cher que lointain, annuler plus cher que replanifier'
 test('spend refuse au-delà du calcul libre', () => {
   const s = buildVoidScenario(7, { hazards: false, temperamentId: 'calm' });
   const { world, engine } = s;
-  engine.activate(RULE_TIME, world); // 2
-  engine.activate(RULE_SPACE, world); // 1 → libre 7
-  assert.equal(engine.spend(8, 'trop'), false);
+  engine.activate('bigbang', world); // la triade naît : 2+1+3 = 6 → libre 4
+  assert.equal(engine.spend(5, 'trop'), false);
   assert.equal(engine.burned, 0);
-  assert.equal(engine.spend(7, 'juste'), true);
-  assert.match(engine.activationBlocker(RULE_MATTER, world) ?? '', /budget insuffisant/);
+  assert.equal(engine.spend(4, 'juste'), true); // jalon 'premier destin réécrit' : capacité 12
+  // used 6 + brûlé 4 + Gravité 3 = 13 > 12 : le brûlé compte dans le budget.
+  assert.match(engine.activationBlocker('gravity', world) ?? '', /budget insuffisant/);
 });
 
 test('contre-jeu : faire monter les eaux avant la sécheresse évite les morts', () => {
@@ -169,7 +169,7 @@ test('contre-jeu : faire monter les eaux avant la sécheresse évite les morts',
     const { world, fate, engine } = s;
     engine.capacity = 100;
     // Chaîne minimale pour que la règle Conditions soit activable et agisse.
-    for (const id of ['time', 'space', 'matter', 'gravity', 'aggregation', 'fusion', 'chemistry']) {
+    for (const id of ['bigbang', 'gravity', 'aggregation', 'fusion', 'chemistry']) {
       engine.activate(id, world);
     }
     const { planet } = craftLivingWorld(world);

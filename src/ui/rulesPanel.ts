@@ -121,9 +121,6 @@ export class RulesPanel {
         this.addLogEntry(`⛭ ${name()} : migration d'orbite engagée vers ${target}`);
       } else if (e.kind === 'terraform-complete') {
         this.addLogEntry(`⛭ ${name()} : orbite stabilisée`, true);
-      } else if (e.kind === 'singularity-born') {
-        const at = (e.data as { atTick: number }).atTick;
-        this.addLogEntry(`✸ Une singularité frémit — l'univers naîtra au tick ${at}`, true);
       } else if (e.kind === 'big-bang') {
         const n = (e.data as { particles: number }).particles;
         this.addLogEntry(`✸ BIG BANG — ${n} grains d'existence projetés dans le Vide`, true);
@@ -157,7 +154,7 @@ export class RulesPanel {
         );
       }
     });
-    this.addLogEntry('Le Vide. Rien n\'existe. À vous d\'écrire la première règle.');
+    this.addLogEntry('Le Vide. Seule une singularité frémit — codez le Big Bang.');
   }
 
   private buildCard(def: RuleDef): HTMLElement {

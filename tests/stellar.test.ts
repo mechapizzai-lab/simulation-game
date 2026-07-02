@@ -15,9 +15,8 @@ import {
   RULE_AGGREGATION,
   RULE_FUSION,
   RULE_GRAVITY,
+  RULE_BIGBANG,
   RULE_MATTER,
-  RULE_SPACE,
-  RULE_TIME,
 } from '../src/simulation/cosmos.js';
 import {
   Chemistry,
@@ -38,12 +37,15 @@ import type { EntityId, World } from '../src/simulation/ecs.js';
 function makeSim(seed = 7): ReturnType<typeof buildVoidScenario> {
   const s = buildVoidScenario(seed, { hazards: false, temperamentId: 'calm' });
   s.engine.capacity = 100;
-  for (const id of [RULE_TIME, RULE_SPACE, RULE_MATTER, RULE_GRAVITY, RULE_AGGREGATION, RULE_FUSION]) {
+  for (const id of [RULE_BIGBANG, RULE_GRAVITY, RULE_AGGREGATION, RULE_FUSION]) {
     s.engine.activate(id, s.world);
   }
-  // Matière codée (savoir acquis pour l'arbre) puis COUPÉE : pas de Big Bang
-  // ni de matière parasite — ces tests sculptent leurs corps à la main.
+  // Le bang a eu lieu (le temps existe) mais ces tests sculptent leurs corps
+  // à la main : on coupe Matière et on purge la matière projetée.
   s.engine.deactivate(RULE_MATTER);
+  for (const [e, sp] of s.world.query(Species)) {
+    if (sp.kind === 'particle') s.world.destroyEntity(e);
+  }
   return s;
 }
 

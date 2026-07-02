@@ -23,13 +23,15 @@ npm run build    # type-check strict + bundle de production
 
 ## Jouer
 
-1. **Le Vide, puis le Big Bang.** Rien n'existe. Quand Temps, Espace et
-   Matière coexistent pour la première fois, une SINGULARITÉ apparaît au
-   centre — cliquez-la : la naissance de l'univers est écrite dans sa
-   timeline (« ✸ BIG BANG : tick N »), replanifiable, annulable. À la
-   déflagration : flash, onde de choc, la matière initiale éjectée depuis le
-   point. Sans Gravité codée, l'expansion disperse tout hors de l'existence —
-   un univers peut rater son départ.
+1. **Le Vide, puis le Big Bang.** Seule une singularité existe — elle
+   précède tout, il n'y a pas d'avant (et pas de compte à rebours : rien ne
+   pourrait le compter). L'unique règle codable est « Big Bang » : la coder
+   EST la déflagration — le tick 0 est le Big Bang, et le Temps, l'Espace et
+   la Matière NAISSENT de l'événement (activés par lui, coupables ensuite :
+   on peut geler le temps de son univers, pas le coder avant qu'il existe).
+   Flash, onde de choc, la matière initiale éjectée depuis le point. Sans
+   Gravité codée ensuite, l'expansion disperse tout hors de l'existence — un
+   univers peut rater son départ.
 2. **Codez.** Chaque règle a un effet immédiat ou progressif : la Matière
    condense des particules, la Gravité les fait dériver, l'Agrégation les
    amasse, la Fusion allume les étoiles (l'allumage est un *destin* écrit

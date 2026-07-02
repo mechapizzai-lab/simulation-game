@@ -124,7 +124,7 @@ test('sauver un run par terraformation : hors zone, un monde migré devient habi
   const s = buildVoidScenario(3, { hazards: false, temperamentId: 'calm' });
   const { world, engine } = s;
   engine.capacity = 100;
-  for (const id of [RULE_TIME, RULE_SPACE, RULE_MATTER, 'gravity', 'aggregation', 'fusion', RULE_CHEMISTRY]) {
+  for (const id of ['bigbang', 'gravity', 'aggregation', 'fusion', RULE_CHEMISTRY]) {
     engine.activate(id, world);
   }
   const planet = craftPlanet(world, 300); // hors zone (100–220 en clément)

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { buildVoidScenario } from '../src/scenario.js';
 import {
   RULE_AGGREGATION,
+  RULE_BIGBANG,
   RULE_CHEMISTRY,
   RULE_CONDITIONS,
   RULE_FUSION,
@@ -46,23 +47,38 @@ function runUntil(
   assert.ok(condition(), `${label} (après ${maxTicks} ticks)`);
 }
 
-test('le Vide est vide, et rien n\'émerge tant qu\'aucune règle n\'est codée', () => {
+test('le Vide ne contient que la singularité, et rien n\'émerge avant le Big Bang', () => {
   const s = buildVoidScenario(1, { temperamentId: 'calm' });
-  assert.equal(s.world.entityCount, 0);
+  assert.equal(s.world.entityCount, 1, 'la singularité précède tout');
+  assert.equal(countKind(s.world, 'singularity'), 1);
+  assert.equal(s.engine.isActive(RULE_TIME), false, 'le temps n\'existe pas encore');
   for (let i = 0; i < 200; i++) s.world.step();
-  assert.equal(s.world.entityCount, 0, 'aucune règle : rien, jamais');
+  assert.equal(s.world.entityCount, 1, 'avant le bang : rien, jamais');
   assert.equal(s.engine.used, 0);
+});
+
+test('le Big Bang fait naître le Temps, l\'Espace et la Matière — au tick 0', () => {
+  const s = buildVoidScenario(1, { temperamentId: 'calm' });
+  assert.equal(s.engine.activate(RULE_BIGBANG, s.world), true);
+  assert.equal(s.world.tick, 0, 'le tick 0 EST le Big Bang');
+  assert.equal(s.engine.isActive(RULE_TIME), true, 'le temps est né de la déflagration');
+  assert.equal(s.engine.isActive(RULE_SPACE), true);
+  assert.equal(s.engine.isActive(RULE_MATTER), true);
+  assert.equal(s.engine.used, 6, 'la triade née du bang porte ses coûts (2+1+3)');
+  assert.equal(countKind(s.world, 'singularity'), 0, 'la singularité est consommée');
+  assert.ok(countKind(s.world, 'particle') >= 100, 'la matière initiale est projetée');
+  // Le temps né, on peut le geler — mais pas revenir avant lui.
+  assert.equal(s.engine.deactivate(RULE_TIME), true);
+  assert.equal(s.engine.activate(RULE_TIME, s.world), true);
 });
 
 test('la grande échelle : du néant à la vie, avec deux dilemmes de budget', () => {
   const s = buildVoidScenario(20260702, { temperamentId: 'calm' });
   const { world, engine } = s;
 
-  // --- Coder les fondations : Temps, Espace, Matière (6/10) ---
-  assert.equal(engine.activate(RULE_TIME, world), true);
-  assert.equal(engine.activate(RULE_SPACE, world), true);
-  assert.equal(engine.activate(RULE_MATTER, world), true);
-  runUntil(s, 'des particules condensent', 2000, () => countKind(world, 'particle') > 20);
+  // --- Le Big Bang : la triade naît de la déflagration (6/10) ---
+  assert.equal(engine.activate(RULE_BIGBANG, world), true);
+  runUntil(s, 'la matière projetée existe', 2000, () => countKind(world, 'particle') > 20);
 
   // --- Gravité (9/10) puis jalon "la matière existe" (+2 → 12) ---
   assert.equal(engine.activate(RULE_GRAVITY, world), true);
@@ -173,7 +189,7 @@ test('rétroactivité : paramètres en direct, destins écrits figés', () => {
   const s = buildVoidScenario(5, { temperamentId: 'calm' });
   const { world, engine, fate } = s;
   engine.capacity = 100; // hors gameplay : on teste les contrats, pas le budget
-  for (const id of [RULE_TIME, RULE_SPACE, RULE_MATTER, RULE_GRAVITY, RULE_AGGREGATION, RULE_FUSION]) {
+  for (const id of [RULE_BIGBANG, RULE_GRAVITY, RULE_AGGREGATION, RULE_FUSION]) {
     assert.equal(engine.activate(id, world), true);
   }
 
@@ -216,7 +232,7 @@ test('couper une règle arrête le processus, jamais les produits', () => {
   const s = buildVoidScenario(9, { temperamentId: 'calm' });
   const { world, engine } = s;
   engine.capacity = 100;
-  for (const id of [RULE_TIME, RULE_SPACE, RULE_MATTER, RULE_GRAVITY, RULE_AGGREGATION]) {
+  for (const id of [RULE_BIGBANG, RULE_GRAVITY, RULE_AGGREGATION]) {
     engine.activate(id, world);
   }
   for (let i = 0; i < 4000; i++) world.step();

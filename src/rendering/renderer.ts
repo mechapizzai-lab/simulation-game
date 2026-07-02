@@ -100,17 +100,44 @@ export class Renderer {
     ctx.fillStyle = spaceExists ? '#05070d' : '#000000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (!spaceExists) {
-      // Le Vide absolu : pas d'étendue, pas de fond stellaire — rien.
+      // Le Vide absolu : pas d'étendue, pas de fond stellaire. Seule la
+      // singularité existe — elle précède l'espace, on la dessine quand même.
+      for (const [entity, s] of world.query(Species)) {
+        if (s.kind !== 'singularity') continue;
+        const pos = world.get(entity, Position);
+        if (!pos) continue;
+        const px = camera.screenX(pos.x);
+        const py = camera.screenY(pos.y);
+        const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 160);
+        const halo = ctx.createRadialGradient(px, py, 0, px, py, 26 * pulse);
+        halo.addColorStop(0, `rgba(255, 255, 255, ${0.85 * pulse})`);
+        halo.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(px, py, 26 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        if (entity === selected) {
+          ctx.strokeStyle = '#ffd75e';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(px, py, 10, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
       ctx.fillStyle = 'rgba(140, 150, 173, 0.45)';
       ctx.font = `${16 * devicePixelRatio}px system-ui`;
       ctx.textAlign = 'center';
-      ctx.fillText('LE VIDE', canvas.width / 2, canvas.height / 2 - 12 * devicePixelRatio);
+      ctx.fillText('LE VIDE', canvas.width / 2, canvas.height / 2 - 46 * devicePixelRatio);
       ctx.fillStyle = 'rgba(140, 150, 173, 0.28)';
       ctx.font = `${12 * devicePixelRatio}px system-ui`;
       ctx.fillText(
-        'rien n\'existe encore — codez une règle dans le panneau de gauche',
+        'une singularité frémit — codez le Big Bang',
         canvas.width / 2,
-        canvas.height / 2 + 12 * devicePixelRatio,
+        canvas.height / 2 + 46 * devicePixelRatio,
       );
       return;
     }
