@@ -16,13 +16,16 @@ import type { ComponentType } from '../simulation/ecs.js';
 import { FateQueue } from '../simulation/fate.js';
 import {
   Age,
+  Chemistry,
   GrowthRate,
   Health,
   Lifespan,
+  Mass,
   Orbit,
   Position,
   Size,
   Species,
+  Temperature,
   Wanderer,
 } from '../simulation/components.js';
 import { FATE_DEATH, FATE_MATURITY, applyLifespanEdit } from '../simulation/archetypes.js';
@@ -89,6 +92,13 @@ const EDITABLE_COMPONENTS: ComponentSpec[] = [
     { key: 'radius', label: 'rayon d\'orbite', set: direct(erase(Orbit), 'radius') },
     { key: 'angularSpeed', label: 'vitesse angulaire', set: direct(erase(Orbit), 'angularSpeed'), step: 0.0001 },
   ]),
+  spec(Mass, [{ key: 'mass', label: 'masse' }]), // lecture seule : la masse s'amasse, elle ne se décrète pas
+  spec(Temperature, [
+    // Réchauffer ou refroidir un monde à la main : édit divin par excellence.
+    { key: 'current', label: 'température', set: direct(erase(Temperature), 'current') },
+    { key: 'coolingPerTick', label: 'refroidissement/tick', set: direct(erase(Temperature), 'coolingPerTick'), step: 0.01 },
+  ]),
+  spec(Chemistry, [{ key: 'richness', label: 'richesse chimique', set: direct(erase(Chemistry), 'richness'), step: 0.05 }]),
 ];
 
 const FATE_LABELS: Record<string, string> = {
@@ -96,6 +106,8 @@ const FATE_LABELS: Record<string, string> = {
   [FATE_MATURITY]: 'Maturité',
   'forest-seed': 'Germination',
   'village-birth': 'Naissance',
+  ignition: 'Allumage',
+  abiogenesis: 'Abiogenèse',
 };
 
 /** Une ligne champ éditable : synchronisée chaque frame SAUF pendant la saisie. */

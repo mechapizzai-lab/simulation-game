@@ -10,7 +10,17 @@
  * superposées dont on anime l'alpha selon la distance caméra, même logique.
  */
 import type { EntityId, World } from '../simulation/ecs.js';
-import { OnPlanet, Orbit, Position, Size, Species } from '../simulation/components.js';
+import {
+  Chemistry,
+  Habitable,
+  Igniting,
+  OnPlanet,
+  Orbit,
+  Position,
+  Size,
+  Species,
+  Temperature,
+} from '../simulation/components.js';
 import { Rng } from '../simulation/rng.js';
 import { Camera } from './camera.js';
 import { drawSurface, type SurfaceTransform } from './surface.js';
@@ -21,11 +31,17 @@ export const SURFACE_TO_UNIVERSE = 0.02;
 const SURFACE_FADE_START = 8;
 const SURFACE_FADE_END = 30;
 
-const PLANET_COLORS: Record<string, string> = {
-  Aria: '#c97a4a',
-  'Gaïa': '#4a8fc9',
-  Thao: '#b8a06a',
-};
+/** La couleur d'une planète RACONTE son état : incandescente → refroidie →
+ *  enrichie par la chimie → habitable. Le joueur lit l'émergence sans HUD. */
+function planetColor(world: World, e: EntityId): string {
+  if (world.has(e, Habitable)) return '#4a9d6f';
+  const chem = world.get(e, Chemistry);
+  if (chem && chem.richness > 0.05) return '#a1793f';
+  const t = world.get(e, Temperature)?.current ?? 0;
+  if (t > 600) return '#e2603a';
+  if (t > 300) return '#9a6f52';
+  return '#7d8896';
+}
 
 interface Star {
   x: number;
@@ -53,14 +69,35 @@ export class Renderer {
     return Math.min(1, Math.max(0, (zoom - SURFACE_FADE_START) / (SURFACE_FADE_END - SURFACE_FADE_START)));
   }
 
-  render(world: World, camera: Camera, surfacePlanets: EntityId[], selected: EntityId | null): void {
+  render(
+    world: World,
+    camera: Camera,
+    surfacePlanets: EntityId[],
+    selected: EntityId | null,
+    spaceExists: boolean,
+  ): void {
     const { ctx, canvas } = this;
     const sAlpha = this.surfaceAlpha(camera.zoom);
     const universeAlpha = 1 - sAlpha;
 
-    // --- Fond spatial ---
-    ctx.fillStyle = '#05070d';
+    // --- Fond ---
+    ctx.fillStyle = spaceExists ? '#05070d' : '#000000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!spaceExists) {
+      // Le Vide absolu : pas d'étendue, pas de fond stellaire — rien.
+      ctx.fillStyle = 'rgba(140, 150, 173, 0.45)';
+      ctx.font = `${16 * devicePixelRatio}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.fillText('LE VIDE', canvas.width / 2, canvas.height / 2 - 12 * devicePixelRatio);
+      ctx.fillStyle = 'rgba(140, 150, 173, 0.28)';
+      ctx.font = `${12 * devicePixelRatio}px system-ui`;
+      ctx.fillText(
+        'rien n\'existe encore — codez une règle dans le panneau de gauche',
+        canvas.width / 2,
+        canvas.height / 2 + 12 * devicePixelRatio,
+      );
+      return;
+    }
     // Les étoiles restent visibles à tout zoom : la surface les recouvre de
     // toute façon, et autour du disque on voit l'espace — on est sur une planète.
     ctx.save();
@@ -135,7 +172,36 @@ export class Renderer {
       const py = camera.screenY(pos.y);
       const r = size.size * camera.zoom;
 
-      if (species.kind === 'star') {
+      if (species.kind === 'particle') {
+        // Poussière primordiale : de simples points, mais on les VOIT condenser.
+        ctx.fillStyle = 'rgba(190, 205, 235, 0.85)';
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(1, r * 0.6), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (species.kind === 'clump') {
+        ctx.fillStyle = '#6b6257';
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(1.5, r), 0, Math.PI * 2);
+        ctx.fill();
+        // Destin d'allumage écrit : l'amas rougeoie de plus en plus fort à
+        // l'approche de son tick — le futur est visible avant d'arriver.
+        const igniting = world.get(entity, Igniting);
+        if (igniting && world.tick < igniting.atTick) {
+          const pulse = 0.35 + 0.3 * Math.sin(performance.now() / 120);
+          ctx.strokeStyle = `rgba(255, 150, 60, ${pulse})`;
+          ctx.lineWidth = Math.max(1.5, r * 0.25);
+          ctx.beginPath();
+          ctx.arc(px, py, Math.max(3, r * 1.3), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        if (entity === selected) {
+          ctx.strokeStyle = '#ffd75e';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(px, py, Math.max(4, r) + 4, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if (species.kind === 'star') {
         const glow = ctx.createRadialGradient(px, py, r * 0.3, px, py, r * 3);
         glow.addColorStop(0, 'rgba(255, 220, 130, 0.9)');
         glow.addColorStop(1, 'rgba(255, 220, 130, 0)');
@@ -148,7 +214,7 @@ export class Renderer {
         ctx.arc(px, py, r, 0, Math.PI * 2);
         ctx.fill();
       } else if (species.kind === 'planet') {
-        ctx.fillStyle = PLANET_COLORS[species.label] ?? '#9aa4b8';
+        ctx.fillStyle = planetColor(world, entity);
         ctx.beginPath();
         ctx.arc(px, py, r, 0, Math.PI * 2);
         ctx.fill();
@@ -210,7 +276,9 @@ export class Renderer {
     let best: EntityId | null = null;
     let bestDist = Infinity;
     for (const [entity, species] of world.query(Species)) {
-      if (species.kind !== 'planet' && species.kind !== 'star') continue;
+      // Tout corps céleste est inspectable — y compris un amas, dont la
+      // timeline montre l'allumage à venir.
+      if (!['planet', 'star', 'clump', 'particle'].includes(species.kind)) continue;
       const pos = world.get(entity, Position);
       const size = world.get(entity, Size);
       if (!pos || !size) continue;

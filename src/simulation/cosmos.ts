@@ -65,6 +65,12 @@ export const FATE_VILLAGE_BIRTH = 'village-birth';
 
 /** Température sous laquelle une planète compte comme "refroidie". */
 const COOLED_TEMP = 300;
+/** Zone habitable : bande de rayons d'orbite où l'eau peut se former. Sans
+ *  elle, TOUTES les planètes refroidies finissent habitables (testé : 42/42)
+ *  et l'émergence perd toute saillance. Éditable indirectement : déplacer
+ *  l'orbite d'une planète (panneau divin) peut la faire entrer dans la zone. */
+export const HABITABLE_ORBIT_MIN = 100;
+export const HABITABLE_ORBIT_MAX = 220;
 const MAX_TREES_PER_PLANET = 60;
 const MAX_PEOPLE_PER_PLANET = 24;
 
@@ -129,19 +135,32 @@ export function defineCosmos(engine: RuleEngine, world: World, fate: FateQueue, 
   // ================================================================
   // MATIÈRE — des particules condensent du vide, à taux paramétrable.
   // ================================================================
-  // Compteur de particules jamais créées (les fusionnées comptent) : borne la
-  // masse totale de l'univers, sinon l'agrégation viderait un puits sans fond.
-  let particlesCreated = 0;
+  // Le plafond porte sur les particules LIBRES simultanées : le vide condense
+  // en continu tant que la règle tourne (l'agrégation qui en consomme laisse
+  // la place à de nouvelles). Crucial pour la progression : même si le joueur
+  // code Fusion très tard, il reste toujours de la poussière pour former des
+  // planètes autour de l'étoile. Couper Matière arrête le robinet — c'est le
+  // levier stratégique pour figer la masse de l'univers.
   let condensationAccumulator = 0;
   const condensation: System = {
     name: 'condensation',
     update(w): void {
       const max = engine.param(RULE_MATTER, 'max');
-      if (particlesCreated >= max) return;
-      condensationAccumulator += engine.param(RULE_MATTER, 'rate') / 100;
-      while (condensationAccumulator >= 1 && particlesCreated < max) {
+      let free = countKind(w, 'particle');
+      if (free >= max) {
+        condensationAccumulator = 0;
+        return;
+      }
+      // Le vide n'est pas un puits sans fond : la condensation ralentit à
+      // mesure que la masse totale approche le budget de masse, et s'arrête
+      // à saturation. Sans ce frein, les planètes prolifèrent sans fin (testé
+      // à 200 mondes au tick 53 000 — l'univers doit être FINI pour être lu).
+      const massBudget = engine.param(RULE_MATTER, 'massBudget');
+      const starvation = Math.max(0, 1 - totalMass(w) / massBudget);
+      condensationAccumulator += (engine.param(RULE_MATTER, 'rate') * starvation) / 100;
+      while (condensationAccumulator >= 1 && free < max) {
         condensationAccumulator -= 1;
-        particlesCreated++;
+        free++;
         const angle = rng.range(0, Math.PI * 2);
         const r = UNIVERSE_RADIUS * Math.sqrt(rng.next());
         const e = w.createEntity();
@@ -358,7 +377,7 @@ export function defineCosmos(engine: RuleEngine, world: World, fate: FateQueue, 
             fate.schedule(atTick, e, FATE_IGNITION);
             w.add(e, Igniting, { atTick });
           }
-        } else if (mass >= 5 && stars.length > 0 && !w.has(e, Orbit)) {
+        } else if (mass >= 9 && stars.length > 0 && !w.has(e, Orbit)) {
           // Seuls les amas déjà consistants deviennent des planètes : les
           // poussières continuent de grossir (ou finissent dans l'étoile).
           let nearest: EntityId | null = null;
@@ -458,6 +477,8 @@ export function defineCosmos(engine: RuleEngine, world: World, fate: FateQueue, 
         if (s.kind !== 'planet') continue;
         const chem = w.get(planet, Chemistry);
         if (!chem || chem.richness < 1) continue;
+        const orbit = w.get(planet, Orbit);
+        if (!orbit || orbit.radius < HABITABLE_ORBIT_MIN || orbit.radius > HABITABLE_ORBIT_MAX) continue;
         let lake: EntityId | null = null;
         for (const [le, ls] of w.query(Species)) {
           if (ls.kind === 'lake' && w.get(le, OnPlanet)?.planet === planet) {
@@ -641,10 +662,9 @@ function defineRules(engine: RuleEngine): void {
     requires: [RULE_SPACE],
     cost: 3,
     params: [
-      // Le max dépasse largement la masse de la première étoile (~140) : la
-      // matière qui condense APRÈS l'allumage forme le disque protoplanétaire.
       { key: 'rate', label: 'condensation /100 ticks', default: 8, min: 1, max: 40, step: 1 },
-      { key: 'max', label: 'particules totales', default: 260, min: 20, max: 500, step: 10 },
+      { key: 'max', label: 'particules simultanées', default: 160, min: 20, max: 400, step: 10 },
+      { key: 'massBudget', label: 'masse totale de l\'univers', default: 900, min: 200, max: 2500, step: 50 },
     ],
   });
   engine.define({
@@ -686,7 +706,7 @@ function defineRules(engine: RuleEngine): void {
   engine.define({
     id: RULE_CONDITIONS,
     label: 'Conditions de Vie',
-    description: "L'eau se forme sur les planètes riches en chimie.",
+    description: "L'eau se forme sur les planètes riches en chimie de la zone tempérée (orbite 100–220).",
     requires: [RULE_CHEMISTRY],
     cost: 2,
     params: [{ key: 'waterGrowth', label: 'montée des eaux /tick', default: 0.06, min: 0.01, max: 0.5, step: 0.01 }],

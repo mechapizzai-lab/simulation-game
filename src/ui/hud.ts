@@ -17,7 +17,13 @@ export class Hud {
   private readonly popStat: HTMLElement;
   private readonly buttons = new Map<SpeedMultiplier, HTMLButtonElement>();
 
-  constructor(container: HTMLElement, private readonly clock: SimulationClock, private readonly world: World) {
+  constructor(
+    container: HTMLElement,
+    private readonly clock: SimulationClock,
+    private readonly world: World,
+    /** Tant que la règle Temps n'est pas codée, la vitesse n'a pas de sens. */
+    private readonly timeExists: () => boolean = () => true,
+  ) {
     for (const { value, label } of SPEEDS) {
       const btn = document.createElement('button');
       btn.textContent = label;
@@ -43,7 +49,9 @@ export class Hud {
   }
 
   update(): void {
-    this.tickStat.innerHTML = `tick <b>${this.world.tick}</b>`;
+    const frozen = !this.timeExists();
+    this.tickStat.innerHTML = frozen ? 'le temps n\'existe pas' : `tick <b>${this.world.tick}</b>`;
     this.popStat.innerHTML = `entités <b>${this.world.entityCount}</b>`;
+    for (const btn of this.buttons.values()) btn.disabled = frozen;
   }
 }

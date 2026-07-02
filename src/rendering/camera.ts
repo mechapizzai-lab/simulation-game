@@ -69,6 +69,13 @@ export class Camera {
    *  curseur reste immobile à l'écran). */
   zoomAt(px: number, py: number, factor: number): void {
     const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.targetZoom * factor));
+    // Pendant la traversée ancrée (atmosphère), la molette ne fait QUE zoomer :
+    // laisser le curseur dévier la visée ferait rater le corps sur lequel on
+    // plonge — la molette et le suivi orbital se battraient pour la cible.
+    if (this.anchor !== null && this.zoom < DIVE_ASSIST_END) {
+      this.targetZoom = newZoom;
+      return;
+    }
     const wx = this.worldX(px);
     const wy = this.worldY(py);
     // Résout : screen(w, newZoom, newCenter) == (px, py)
@@ -120,7 +127,9 @@ export class Camera {
     // Gestion de l'ancrage selon le niveau de zoom.
     if (this.zoom >= ANCHOR_ZOOM && this.anchor === null) {
       let best: EntityId | null = null;
-      let bestDist = Infinity;
+      // Ne s'ancrer qu'à un corps raisonnablement proche du centre de visée :
+      // au-delà, le joueur zoome sur du vide et c'est son droit.
+      let bestDist = 300 * 300;
       for (const candidate of anchorCandidates) {
         const pos = world.get(candidate, Position);
         if (!pos) continue;
@@ -136,6 +145,12 @@ export class Camera {
           this.anchor = best;
           this.lastAnchorX = pos.x;
           this.lastAnchorY = pos.y;
+          // Plongée cinématique : la CIBLE saute sur le corps ancré (le lissage
+          // fait glisser la caméra). Sans ce recalage, zoomer plus vite que
+          // l'assistance laisse un décalage résiduel : à zoom 177, 30 unités
+          // d'écart == 5 000 px hors-champ, écran vide (vécu).
+          this.targetX = pos.x;
+          this.targetY = pos.y;
         }
       }
     } else if (this.zoom < ANCHOR_ZOOM && this.anchor !== null) {
