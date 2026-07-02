@@ -43,14 +43,18 @@ test('le budget refuse ce qui dépasse la capacité, avec la raison', () => {
   assert.equal(engine.activate('matter', world), true);
 });
 
-test('on ne peut pas désactiver une règle dont dépend une règle active', () => {
+test('une dépendance est un savoir acquis : codée une fois, elle compte même désactivée', () => {
   const { engine, world } = makeEngine();
   engine.activate('space', world);
   engine.activate('matter', world);
-  assert.match(engine.deactivationBlocker('space') ?? '', /Matière en dépend/);
-  assert.equal(engine.deactivate('space'), false);
-  engine.deactivate('matter');
+  // Couper Espace est PERMIS : Matière (qui en dépend) continue de tourner —
+  // le savoir acquis ne s'oublie pas, seul le processus Espace s'arrête.
   assert.equal(engine.deactivate('space'), true);
+  assert.equal(engine.isActive('matter'), true);
+  // Et Matière reste réactivable après coupure, puisque Espace fut codée.
+  engine.deactivate('matter');
+  assert.equal(engine.activationBlocker('matter', world), null);
+  assert.equal(engine.wasEverCoded('space'), true);
 });
 
 test('les jalons créditent la capacité une seule fois', () => {

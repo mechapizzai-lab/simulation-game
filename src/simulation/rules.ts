@@ -72,6 +72,11 @@ export type RuleEventListener = (event: {
 export class RuleEngine {
   private readonly defs = new Map<string, RuleDef>();
   private readonly active = new Set<string>();
+  /** Règles codées au moins une fois. Les DÉPENDANCES se testent ici, pas sur
+   *  `active` : une dépendance est un savoir déjà écrit, pas un processus en
+   *  marche. C'est ce qui permet le dilemme central du budget — couper
+   *  l'Agrégation pour financer la Fusion, qui en descend pourtant. */
+  private readonly everCoded = new Set<string>();
   /** Valeurs courantes des paramètres — lues EN DIRECT par les systems. */
   private readonly params = new Map<string, Record<string, number>>();
   private readonly milestones: Milestone[] = [];
@@ -148,7 +153,7 @@ export class RuleEngine {
     const def = this.get(id);
     if (this.active.has(id)) return 'déjà active';
     for (const dep of def.requires) {
-      if (!this.active.has(dep)) return `requiert ${this.get(dep).label}`;
+      if (!this.everCoded.has(dep)) return `requiert ${this.get(dep).label}`;
     }
     if (def.worldRequirement && !def.worldRequirement.check(world)) {
       return `requiert ${def.worldRequirement.label}`;
@@ -162,19 +167,19 @@ export class RuleEngine {
   activate(id: string, world: World): boolean {
     if (this.activationBlocker(id, world) !== null) return false;
     this.active.add(id);
+    this.everCoded.add(id);
     this.emit({ kind: 'activated', id });
     return true;
   }
 
-  /** Une règle ne peut être désactivée que si aucune règle ACTIVE n'en dépend :
-   *  on coupe les feuilles de l'arbre, jamais le tronc sous la canopée. */
+  wasEverCoded(id: string): boolean {
+    return this.everCoded.has(id);
+  }
+
+  /** Toute règle active peut être coupée : ses dépendantes restent actives
+   *  (le savoir acquis ne s'oublie pas), seul SON processus s'arrête. */
   deactivationBlocker(id: string): string | null {
     if (!this.active.has(id)) return 'inactive';
-    for (const other of this.active) {
-      if (this.get(other).requires.includes(id)) {
-        return `${this.get(other).label} en dépend`;
-      }
-    }
     return null;
   }
 

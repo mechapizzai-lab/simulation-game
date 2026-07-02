@@ -75,6 +75,42 @@ export interface SpeciesData {
 }
 export const Species = defineComponent<SpeciesData>('Species');
 
+/** Masse d'un corps (particule = 1, amas = somme des masses absorbées).
+ *  C'est la quantité que l'Agrégation accumule et que la Fusion teste. */
+export interface MassData {
+  mass: number;
+}
+export const Mass = defineComponent<MassData>('Mass');
+
+/** Température d'un corps. Produit de la capture planétaire : décroît toute
+ *  seule à chaque tick (le refroidissement est intrinsèque au corps, pas un
+ *  processus désactivable — une braise refroidit même si on ne code plus rien). */
+export interface TemperatureData {
+  current: number;
+  coolingPerTick: number;
+}
+export const Temperature = defineComponent<TemperatureData>('Temperature');
+
+/** Richesse chimique d'une planète refroidie : grandit tant que la règle
+ *  Chimie tourne, persiste si on la coupe (produit, pas processus). */
+export interface ChemistryData {
+  richness: number;
+}
+export const Chemistry = defineComponent<ChemistryData>('Chemistry');
+
+/** Marqueur : les Conditions de Vie sont réunies (eau formée). */
+export interface HabitableData {
+  sinceTick: number;
+}
+export const Habitable = defineComponent<HabitableData>('Habitable');
+
+/** Un amas dont l'allumage est écrit dans la Fate Queue : le rendu fait
+ *  pulser le corps jusqu'à atTick (l'anticipation du destin, visible). */
+export interface IgnitingData {
+  atTick: number;
+}
+export const Igniting = defineComponent<IgnitingData>('Igniting');
+
 /** Rattache une entité de surface à sa planète : sa Position s'exprime alors
  *  en coordonnées LOCALES de la surface. Le rendu ancre cette surface sur la
  *  position orbitale de la planète — c'est ce qui permet le zoom continu
