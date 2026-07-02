@@ -29,12 +29,15 @@ import {
   Wanderer,
 } from '../simulation/components.js';
 import { FATE_DEATH, FATE_MATURITY, applyLifespanEdit } from '../simulation/archetypes.js';
+import { interventionCost } from '../simulation/cosmos.js';
+import { RuleEngine } from '../simulation/rules.js';
 
 interface FieldSpec {
   key: string;
   label: string;
-  /** Absent = lecture seule (affiché mais non éditable). */
-  set?: (world: World, fate: FateQueue, entity: EntityId, value: number) => void;
+  /** Absent = lecture seule. Renvoie false si l'édit est REFUSÉ (calcul
+   *  insuffisant pour une intervention payante). */
+  set?: (world: World, fate: FateQueue, engine: RuleEngine, entity: EntityId, value: number) => boolean;
   step?: number;
 }
 
@@ -49,11 +52,13 @@ function erase<T>(type: ComponentType<T>): ComponentType<Record<string, number>>
   return type as unknown as ComponentType<Record<string, number>>;
 }
 
-/** Un setter générique : écrit la clé telle quelle dans le component. */
+/** Un setter générique : écrit la clé telle quelle dans le component.
+ *  GRATUIT : muter l'état présent n'est pas réécrire un destin déjà écrit. */
 function direct(type: ComponentType<Record<string, number>>, key: string) {
-  return (world: World, _fate: FateQueue, entity: EntityId, value: number): void => {
+  return (world: World, _fate: FateQueue, _engine: RuleEngine, entity: EntityId, value: number): boolean => {
     const comp = world.get(entity, type);
     if (comp) comp[key] = value;
+    return true;
   };
 }
 
@@ -67,8 +72,14 @@ const EDITABLE_COMPONENTS: ComponentSpec[] = [
     {
       key: 'max',
       label: 'espérance de vie',
-      // L'édit divin par excellence : changer la règle replanifie le destin.
-      set: (world, fate, entity, value) => applyLifespanEdit(world, fate, entity, value),
+      // Cet édit REPLANIFIE la mort : c'est une intervention, elle se paie.
+      set: (world, fate, engine, entity, value) => {
+        const death = fate.eventsFor(entity).find((ev) => ev.kind === FATE_DEATH);
+        const cost = death ? interventionCost(FATE_DEATH, death.tick - world.tick, 'reschedule') : 0;
+        if (cost > 0 && !engine.spend(cost, 'lifespan-edit')) return false;
+        applyLifespanEdit(world, fate, entity, value);
+        return true;
+      },
     },
   ]),
   spec(Health, [
@@ -108,6 +119,9 @@ const FATE_LABELS: Record<string, string> = {
   'village-birth': 'Naissance',
   ignition: 'Allumage',
   abiogenesis: 'Abiogenèse',
+  'hazard-impact': '☄ IMPACT',
+  'hazard-drought': '☀ Sécheresse',
+  'hazard-flare': '☀ Éruption',
 };
 
 /** Une ligne champ éditable : synchronisée chaque frame SAUF pendant la saisie. */
@@ -128,7 +142,18 @@ export class GodPanel {
     private readonly root: HTMLElement,
     private readonly world: World,
     private readonly fate: FateQueue,
+    private readonly engine: RuleEngine,
   ) {}
+
+  /** Message d'économie du destin (coût payé / refus), affiché sous le titre
+   *  de la section Destin jusqu'à la prochaine action. */
+  private fateMsg: HTMLElement | null = null;
+
+  private sayFate(text: string, isError: boolean): void {
+    if (!this.fateMsg) return;
+    this.fateMsg.textContent = text;
+    this.fateMsg.style.color = isError ? '#e06c6c' : '#8fd49a';
+  }
 
   select(entity: EntityId | null): void {
     this.entity = entity;
@@ -166,6 +191,7 @@ export class GodPanel {
     this.boundInputs = [];
     this.readonlyFields = [];
     this.fateContainer = null;
+    this.fateMsg = null;
     this.fateSignature = '';
     if (this.entity === null) {
       this.root.classList.remove('open');
@@ -210,7 +236,9 @@ export class GodPanel {
           input.value = formatNumber(comp[field.key] ?? 0);
           const apply = (): void => {
             const v = Number(input.value);
-            if (Number.isFinite(v)) field.set?.(this.world, this.fate, entity, v);
+            if (!Number.isFinite(v)) return;
+            const ok = field.set?.(this.world, this.fate, this.engine, entity, v) ?? true;
+            if (!ok) this.sayFate(`calcul libre insuffisant (libre : ${this.engine.free})`, true);
           };
           input.addEventListener('change', apply);
           input.addEventListener('keydown', (e) => {
@@ -241,6 +269,10 @@ export class GodPanel {
     const fateTitle = document.createElement('h3');
     fateTitle.textContent = 'Destin (Fate Queue)';
     this.root.appendChild(fateTitle);
+    this.fateMsg = document.createElement('div');
+    this.fateMsg.className = 'hint';
+    this.fateMsg.textContent = 'réécrire un destin brûle du calcul libre';
+    this.root.appendChild(this.fateMsg);
     this.fateContainer = document.createElement('div');
     this.root.appendChild(this.fateContainer);
     this.rebuildFate();
@@ -272,19 +304,41 @@ export class GodPanel {
       when.textContent = `tick ${event.tick} (dans ${event.tick - this.world.tick})`;
 
       // Éditer le tick == replanifier l'événement (jamais dans le passé).
+      // Chaque réécriture BRÛLE du calcul libre : ampleur × urgence.
+      const rescheduleCost = (): number =>
+        interventionCost(event.kind, event.tick - this.world.tick, 'reschedule');
+      const cancelCost = (): number =>
+        interventionCost(event.kind, event.tick - this.world.tick, 'cancel');
+
       const input = document.createElement('input');
       input.type = 'number';
       input.value = String(event.tick);
-      input.title = 'Replanifier ce destin à un autre tick';
+      input.title = `Replanifier ce destin (coût : ${rescheduleCost()} ⚙)`;
       input.addEventListener('change', () => {
         const v = Math.max(this.world.tick + 1, Math.round(Number(input.value)));
-        if (Number.isFinite(v)) this.fate.reschedule(event.id, v);
+        if (!Number.isFinite(v) || v === event.tick) return;
+        const cost = rescheduleCost();
+        if (!this.engine.spend(cost, `reschedule-${event.kind}`)) {
+          input.value = String(event.tick);
+          this.sayFate(`replanifier coûte ${cost} ⚙ (libre : ${this.engine.free})`, true);
+          return;
+        }
+        this.fate.reschedule(event.id, v);
+        this.sayFate(`−${cost} ⚙ : destin replanifié au tick ${v}`, false);
       });
 
       const cancel = document.createElement('button');
-      cancel.textContent = '✕';
+      cancel.textContent = `✕ ${cancelCost()}⚙`;
       cancel.title = 'Annuler ce destin (il ne se réalisera jamais)';
-      cancel.addEventListener('click', () => this.fate.cancel(event.id));
+      cancel.addEventListener('click', () => {
+        const cost = cancelCost();
+        if (!this.engine.spend(cost, `cancel-${event.kind}`)) {
+          this.sayFate(`annuler coûte ${cost} ⚙ (libre : ${this.engine.free})`, true);
+          return;
+        }
+        this.fate.cancel(event.id);
+        this.sayFate(`−${cost} ⚙ : destin effacé`, false);
+      });
 
       row.append(kind, when, input, cancel);
       this.fateContainer.appendChild(row);

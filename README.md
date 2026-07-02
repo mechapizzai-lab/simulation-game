@@ -38,6 +38,14 @@ npm run build    # type-check strict + bundle de production
 4. **Arbitrez.** Chaque règle active coûte du calcul ; la capacité augmente
    quand l'univers franchit un jalon observable. Deux dilemmes sont calibrés :
    à Fusion et à Vie, il faut couper un processus pour financer le suivant.
+5. **Défendez.** L'univers écrit ses propres destins hostiles : astéroïdes
+   (trajectoire pointillée + compte à rebours), sécheresses, éruptions —
+   annoncés longtemps à l'avance dans le journal ET dans la timeline de leur
+   cible. Trois réponses possibles : payer pour réécrire le destin (annuler
+   coûte le double de replanifier, l'urgence multiplie jusqu'à ×3), contrer
+   par une règle (pomper la montée des eaux avant la sécheresse, éloigner une
+   planète de l'éruption), ou laisser faire — l'échec laisse un cratère, mais
+   le potentiel demeure : l'eau peut remonter, la vie peut renaître.
 
 ## Les règles du méta-jeu (contrats de design, documentés dans le code)
 
@@ -67,8 +75,17 @@ l'Agrégation pour financer la Fusion » serait impossible.
 Capacité initiale 10 (Temps 2 + Espace 1 + Matière 3 + Gravité 3, pas un bit
 de plus). Jalons : matière ≥ 40 (+2), premier amas dense (+3), première
 étoile (+4), première planète refroidie (+3), premier monde habitable (+2),
-première vie (+4). Observer finance le code suivant — la boucle de gameplay
-est aussi la boucle d'économie.
+première vie (+4), premier destin réécrit (+2). Observer finance le code
+suivant — la boucle de gameplay est aussi la boucle d'économie.
+
+### Intervenir brûle du calcul libre
+Réécrire un destin déjà écrit consomme du calcul libre (capacité − règles −
+brûlé), qui se régénère lentement (1 point / 250 ticks). Coût = ampleur du
+type d'événement × urgence (< 500 ticks : ×3) × 2 si annulation. Les édits de
+paramètres de règles restent gratuits (prospectifs) ; muter l'état présent
+d'une entité (position, température) aussi — seul le FUTUR déjà écrit se paie.
+En fin de partie, couper les règles de cosmogonie devenues inutiles est LE
+moyen de libérer du calcul d'intervention : les produits persistent.
 
 ## Architecture
 

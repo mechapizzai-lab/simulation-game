@@ -27,7 +27,7 @@ const hud = new Hud(
   () => engine.isActive(RULE_TIME),
 );
 const rulesPanel = new RulesPanel(document.getElementById('rules') as HTMLElement, engine, world);
-const godPanel = new GodPanel(document.getElementById('panel') as HTMLElement, world, fate);
+const godPanel = new GodPanel(document.getElementById('panel') as HTMLElement, world, fate, engine);
 
 const viewport = { width: 0, height: 0 };
 function resize(): void {

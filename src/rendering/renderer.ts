@@ -12,7 +12,9 @@
 import type { EntityId, World } from '../simulation/ecs.js';
 import {
   Chemistry,
+  Crater,
   Habitable,
+  Hazard,
   Igniting,
   OnPlanet,
   Orbit,
@@ -172,7 +174,39 @@ export class Renderer {
       const py = camera.screenY(pos.y);
       const r = size.size * camera.zoom;
 
-      if (species.kind === 'particle') {
+      if (species.kind === 'asteroid') {
+        // La menace se VOIT venir : trajectoire pointillée vers la cible et
+        // compte à rebours — le joueur doit sentir l'échéance, pas la subir.
+        const hz = world.get(entity, Hazard);
+        const targetPos = hz ? world.get(hz.target, Position) : undefined;
+        if (targetPos) {
+          ctx.strokeStyle = 'rgba(255, 120, 70, 0.45)';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([7, 7]);
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(camera.screenX(targetPos.x), camera.screenY(targetPos.y));
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        ctx.fillStyle = '#c9b8a6';
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(2.5, r), 0, Math.PI * 2);
+        ctx.fill();
+        if (hz) {
+          ctx.fillStyle = 'rgba(255, 150, 90, 0.9)';
+          ctx.font = `${11 * devicePixelRatio}px system-ui`;
+          ctx.textAlign = 'left';
+          ctx.fillText(`☄ −${Math.max(0, hz.impactTick - world.tick)}`, px + 8, py - 8);
+        }
+        if (entity === selected) {
+          ctx.strokeStyle = '#ffd75e';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(px, py, Math.max(4, r) + 4, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if (species.kind === 'particle') {
         // Poussière primordiale : de simples points, mais on les VOIT condenser.
         ctx.fillStyle = 'rgba(190, 205, 235, 0.85)';
         ctx.beginPath();
@@ -218,6 +252,13 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(px, py, r, 0, Math.PI * 2);
         ctx.fill();
+        // L'échec laisse une trace : la cicatrice d'impact reste visible.
+        if (world.has(entity, Crater)) {
+          ctx.fillStyle = 'rgba(30, 22, 18, 0.55)';
+          ctx.beginPath();
+          ctx.arc(px - r * 0.3, py - r * 0.25, r * 0.38, 0, Math.PI * 2);
+          ctx.fill();
+        }
         // Terminateur jour/nuit sommaire : vend l'idée "corps 3D éclairé".
         ctx.fillStyle = 'rgba(5, 7, 13, 0.35)';
         ctx.beginPath();
@@ -278,7 +319,7 @@ export class Renderer {
     for (const [entity, species] of world.query(Species)) {
       // Tout corps céleste est inspectable — y compris un amas, dont la
       // timeline montre l'allumage à venir.
-      if (!['planet', 'star', 'clump', 'particle'].includes(species.kind)) continue;
+      if (!['planet', 'star', 'clump', 'particle', 'asteroid'].includes(species.kind)) continue;
       const pos = world.get(entity, Position);
       const size = world.get(entity, Size);
       if (!pos || !size) continue;
@@ -287,6 +328,12 @@ export class Renderer {
         bestDist = d;
         best = entity;
       }
+    }
+    // Cliquer l'astéroïde sélectionne sa CIBLE : c'est là que vit l'événement
+    // d'impact qu'on veut lire/réécrire.
+    if (best !== null) {
+      const hz = world.get(best, Hazard);
+      if (hz) return hz.target;
     }
     return best;
   }

@@ -7,7 +7,7 @@ import { World } from './simulation/ecs.js';
 import { FateQueue, createFateSystem } from './simulation/fate.js';
 import { Rng } from './simulation/rng.js';
 import { RuleEngine } from './simulation/rules.js';
-import { defineCosmos } from './simulation/cosmos.js';
+import { defineCosmos, type CosmosOptions } from './simulation/cosmos.js';
 import { registerStandardFates } from './simulation/archetypes.js';
 import {
   AgingSystem,
@@ -31,14 +31,14 @@ export interface VoidScenario {
   rng: Rng;
 }
 
-export function buildVoidScenario(seed = 20260702): VoidScenario {
+export function buildVoidScenario(seed = 20260702, options: CosmosOptions = {}): VoidScenario {
   const world = new World();
   const fate = new FateQueue();
   const rng = new Rng(seed);
   const engine = new RuleEngine(INITIAL_CAPACITY);
   registerStandardFates(fate);
 
-  const cosmos = defineCosmos(engine, world, fate, rng);
+  const cosmos = defineCosmos(engine, world, fate, rng, options);
 
   // Ordre d'exécution : destins d'abord (les morts de ce tick ne bougent plus),
   // puis les processus des règles, puis les évolutions continues des produits.
@@ -58,6 +58,13 @@ export function buildVoidScenario(seed = 20260702): VoidScenario {
     name: 'milestones',
     update(w, tick): void {
       if (tick % 5 === 0) engine.checkMilestones(w);
+    },
+  });
+  // Le calcul brûlé par les interventions se régénère au fil des ticks.
+  world.addSystem({
+    name: 'calc-regen',
+    update(): void {
+      engine.regen(1);
     },
   });
 

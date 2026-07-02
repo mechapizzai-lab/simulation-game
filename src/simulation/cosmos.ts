@@ -26,8 +26,10 @@ import { Rng } from './rng.js';
 import {
   Age,
   Chemistry,
+  Crater,
   GrowthRate,
   Habitable,
+  Hazard,
   Igniting,
   Lifespan,
   Mass,
@@ -62,6 +64,41 @@ export const FATE_IGNITION = 'ignition';
 export const FATE_ABIOGENESIS = 'abiogenesis';
 export const FATE_FOREST_SEED = 'forest-seed';
 export const FATE_VILLAGE_BIRTH = 'village-birth';
+export const FATE_IMPACT = 'hazard-impact';
+export const FATE_DROUGHT = 'hazard-drought';
+export const FATE_FLARE = 'hazard-flare';
+
+/**
+ * Coût d'une intervention divine sur un destin déjà écrit.
+ * Deux axes, tous deux lisibles par le joueur :
+ * - l'AMPLEUR (base par type d'événement : dévier un astéroïde coûte plus
+ *   que repousser la maturité d'un arbre) ;
+ * - l'URGENCE (multiplicateur de proximité : réécrire à la dernière minute
+ *   coûte jusqu'à 3×) ;
+ * et annuler coûte le double de replanifier — effacer est plus violent que
+ * repousser. Les édits de RÈGLES restent gratuits : ils sont prospectifs.
+ */
+const INTERVENTION_BASE: Record<string, number> = {
+  [FATE_IMPACT]: 2,
+  [FATE_DROUGHT]: 2,
+  [FATE_FLARE]: 2,
+  [FATE_ABIOGENESIS]: 2,
+  [FATE_IGNITION]: 1,
+  death: 1,
+  maturity: 1,
+  [FATE_FOREST_SEED]: 1,
+  [FATE_VILLAGE_BIRTH]: 1,
+};
+
+export function interventionCost(
+  kind: string,
+  ticksUntil: number,
+  action: 'cancel' | 'reschedule',
+): number {
+  const base = INTERVENTION_BASE[kind] ?? 1;
+  const proximity = ticksUntil < 500 ? 3 : ticksUntil < 2000 ? 2 : 1;
+  return base * proximity * (action === 'cancel' ? 2 : 1);
+}
 
 /** Température sous laquelle une planète compte comme "refroidie". */
 const COOLED_TEMP = 300;
@@ -128,7 +165,20 @@ export interface Cosmos {
   systems: System[];
 }
 
-export function defineCosmos(engine: RuleEngine, world: World, fate: FateQueue, rng: Rng): Cosmos {
+export interface CosmosOptions {
+  /** Les aléas cosmiques (astéroïdes, sécheresses, éruptions). Désactivable
+   *  pour les tests déterministes du cœur de progression. */
+  hazards?: boolean;
+}
+
+export function defineCosmos(
+  engine: RuleEngine,
+  world: World,
+  fate: FateQueue,
+  rng: Rng,
+  options: CosmosOptions = {},
+): Cosmos {
+  const hazardsEnabled = options.hazards ?? true;
   defineRules(engine);
   defineMilestones(engine);
 
@@ -624,18 +674,205 @@ export function defineCosmos(engine: RuleEngine, world: World, fate: FateQueue, 
     fate.schedule(w.tick + rng.int(120, 300), planet, FATE_VILLAGE_BIRTH);
   });
 
-  return {
-    systems: [
-      gated(engine, RULE_MATTER, condensation),
-      gated(engine, RULE_GRAVITY, gravityDrift),
-      gated(engine, RULE_AGGREGATION, aggregation),
-      gated(engine, RULE_FUSION, fusion),
-      cooling, // intrinsèque : pas de règle
-      gated(engine, RULE_CHEMISTRY, chemistry),
-      gated(engine, RULE_CONDITIONS, lifeConditions),
-      gated(engine, RULE_LIFE, life),
-    ],
+  // ================================================================
+  // ALÉAS COSMIQUES — l'univers écrit ses propres destins hostiles dans la
+  // Fate Queue. Ils sont ANNONCÉS longtemps à l'avance (l'événement est
+  // porté par la cible : la sélectionner montre la menace dans sa timeline),
+  // et le joueur arbitre : payer pour réécrire, contrer par une règle, ou
+  // laisser faire. PAS une règle codable : l'entropie ne se désactive pas.
+  // ================================================================
+  const livingPlanets = (w: World): EntityId[] => {
+    const out = new Set<EntityId>();
+    for (const [e, s] of w.query(Species)) {
+      if (s.kind !== 'person' && s.kind !== 'tree') continue;
+      const planet = w.get(e, OnPlanet)?.planet;
+      if (planet !== undefined && w.isAlive(planet)) out.add(planet);
+    }
+    return [...out];
   };
+
+  const allPlanets = (w: World): EntityId[] => {
+    const out: EntityId[] = [];
+    for (const [e, s] of w.query(Species)) if (s.kind === 'planet') out.push(e);
+    return out;
+  };
+
+  const pick = <T>(arr: T[]): T | null => (arr.length === 0 ? null : arr[rng.int(0, arr.length - 1)] ?? null);
+
+  let nextHazardRoll = -1;
+  const hazardRoller: System = {
+    name: 'hazards',
+    update(w, tick): void {
+      const planets = allPlanets(w);
+      if (planets.length === 0) return; // rien à menacer, l'entropie attend
+      if (nextHazardRoll < 0) {
+        nextHazardRoll = tick + rng.int(3000, 5000); // période de grâce
+        return;
+      }
+      if (tick < nextHazardRoll) return;
+      nextHazardRoll = tick + rng.int(4000, 8000);
+
+      // Le drame vise la vie : un monde vivant en priorité, sinon au hasard.
+      const living = livingPlanets(w);
+      const roll = rng.next();
+      if (roll < 0.5) {
+        // --- Astéroïde ---
+        const target = pick(living) ?? pick(planets);
+        if (target === null) return;
+        const impactTick = tick + rng.int(1500, 3500);
+        const eventId = fate.schedule(impactTick, target, FATE_IMPACT);
+        const angle = rng.range(0, Math.PI * 2);
+        const asteroid = w.createEntity();
+        w.add(asteroid, Species, { kind: 'asteroid', label: 'Astéroïde' });
+        const targetPos = w.get(target, Position);
+        w.add(asteroid, Position, {
+          x: (targetPos?.x ?? 0) + Math.cos(angle) * UNIVERSE_RADIUS * 0.9,
+          y: (targetPos?.y ?? 0) + Math.sin(angle) * UNIVERSE_RADIUS * 0.9,
+        });
+        w.add(asteroid, Size, { size: 2 });
+        const pos = w.getRequired(asteroid, Position);
+        w.add(asteroid, Hazard, { eventId, target, bornTick: tick, fromX: pos.x, fromY: pos.y, impactTick });
+        w.emit({ kind: 'hazard-announced', entity: target, tick, data: { hazard: FATE_IMPACT, atTick: impactTick } });
+      } else if (roll < 0.8) {
+        // --- Sécheresse : vise un monde qui a une mer ---
+        const withLake = planets.filter((p) => findLakeOf(w, p) !== null);
+        const target = pick(withLake.filter((p) => living.includes(p))) ?? pick(withLake);
+        if (target === null) return;
+        const atTick = tick + rng.int(2000, 4000);
+        fate.schedule(atTick, target, FATE_DROUGHT);
+        w.emit({ kind: 'hazard-announced', entity: target, tick, data: { hazard: FATE_DROUGHT, atTick } });
+      } else {
+        // --- Éruption stellaire : vise une étoile qui a des planètes proches ---
+        const stars: EntityId[] = [];
+        for (const [e, s] of w.query(Species)) if (s.kind === 'star') stars.push(e);
+        const target = pick(stars);
+        if (target === null) return;
+        const atTick = tick + rng.int(1500, 3000);
+        fate.schedule(atTick, target, FATE_FLARE);
+        w.emit({ kind: 'hazard-announced', entity: target, tick, data: { hazard: FATE_FLARE, atTick } });
+      }
+    },
+  };
+
+  /** Les astéroïdes volent vers leur cible MOUVANTE, calés sur le tick
+   *  d'impact (replanifier l'événement ralentit/accélère le corps). Si
+   *  l'événement a disparu de la queue (annulé), le corps est dévié. */
+  const hazardMover: System = {
+    name: 'hazard-mover',
+    update(w, tick): void {
+      for (const [asteroid, hz] of w.query(Hazard)) {
+        const event = fate.eventsFor(hz.target).find((ev) => ev.id === hz.eventId);
+        if (!event || !w.isAlive(hz.target)) {
+          w.destroyEntity(asteroid);
+          w.emit({ kind: 'hazard-deflected', entity: hz.target, tick });
+          continue;
+        }
+        hz.impactTick = event.tick;
+        const pos = w.get(asteroid, Position);
+        const targetPos = w.get(hz.target, Position);
+        if (!pos || !targetPos) continue;
+        const progress = Math.min(1, Math.max(0, (tick - hz.bornTick) / (event.tick - hz.bornTick)));
+        pos.x = hz.fromX + (targetPos.x - hz.fromX) * progress;
+        pos.y = hz.fromY + (targetPos.y - hz.fromY) * progress;
+      }
+    },
+  };
+
+  fate.onKind(FATE_IMPACT, (w, event) => {
+    for (const [asteroid, hz] of w.query(Hazard)) {
+      if (hz.eventId === event.id) w.destroyEntity(asteroid);
+    }
+    const planet = event.entity;
+    if (!w.isAlive(planet)) return;
+    let deaths = 0;
+    for (const [e, s] of w.query(Species)) {
+      if (w.get(e, OnPlanet)?.planet !== planet) continue;
+      if (s.kind === 'person' || s.kind === 'tree') {
+        deaths++;
+        w.destroyEntity(e);
+      } else if (s.kind === 'lake') {
+        const size = w.get(e, Size);
+        if (size) size.size = Math.max(10, size.size * 0.35);
+      }
+    }
+    // L'échec laisse une trace : cicatrice permanente, monde réchauffé et
+    // stérilisé. Mais le POTENTIEL demeure : si l'eau remonte, l'abiogenèse
+    // pourra se reproduire — les mondes renaissent, plus lentement que prévu.
+    w.remove(planet, Habitable);
+    abiogenesisScheduled.delete(planet);
+    w.add(planet, Crater, { sinceTick: w.tick });
+    const temp = w.get(planet, Temperature);
+    if (temp) temp.current += 350;
+    w.emit({ kind: 'hazard-impact', entity: planet, tick: w.tick, data: { deaths } });
+  });
+
+  fate.onKind(FATE_DROUGHT, (w, event) => {
+    const planet = event.entity;
+    if (!w.isAlive(planet)) return;
+    const lake = findLakeOf(w, planet);
+    if (lake === null) return;
+    const size = w.getRequired(lake, Size);
+    // Baisse FIXE : le contre-jeu est de faire monter les eaux (règle
+    // Conditions, paramètre en direct) au-dessus du seuil avant l'échéance.
+    size.size = Math.max(10, size.size - 120);
+    let deaths = 0;
+    if (size.size < 100) {
+      const people: EntityId[] = [];
+      for (const [e, s] of w.query(Species)) {
+        if (s.kind === 'person' && w.get(e, OnPlanet)?.planet === planet) people.push(e);
+      }
+      for (let i = 0; i < Math.ceil(people.length / 2); i++) {
+        const victim = pick(people.filter((p) => w.isAlive(p)));
+        if (victim !== null) {
+          deaths++;
+          w.destroyEntity(victim);
+        }
+      }
+    }
+    w.emit({ kind: 'hazard-drought', entity: planet, tick: w.tick, data: { deaths } });
+  });
+
+  fate.onKind(FATE_FLARE, (w, event) => {
+    const star = event.entity;
+    if (!w.isAlive(star)) return;
+    let burned = 0;
+    for (const [planet, s] of w.query(Species)) {
+      if (s.kind !== 'planet') continue;
+      const orbit = w.get(planet, Orbit);
+      if (!orbit || orbit.center !== star || orbit.radius > 300) continue;
+      const temp = w.get(planet, Temperature);
+      if (temp) temp.current += 500;
+      for (const [e, es] of w.query(Species)) {
+        if (es.kind === 'tree' && w.get(e, OnPlanet)?.planet === planet) {
+          burned++;
+          w.destroyEntity(e);
+        }
+      }
+    }
+    // Contre-jeu original : ÉLOIGNER une planète (édition d'orbite) la sort
+    // du rayon de l'éruption — la terraformation défensive.
+    w.emit({ kind: 'hazard-flare', entity: star, tick: w.tick, data: { burned } });
+  });
+
+  function findLakeOf(w: World, planet: EntityId): EntityId | null {
+    for (const [e, s] of w.query(Species)) {
+      if (s.kind === 'lake' && w.get(e, OnPlanet)?.planet === planet) return e;
+    }
+    return null;
+  }
+
+  const systems: System[] = [
+    gated(engine, RULE_MATTER, condensation),
+    gated(engine, RULE_GRAVITY, gravityDrift),
+    gated(engine, RULE_AGGREGATION, aggregation),
+    gated(engine, RULE_FUSION, fusion),
+    cooling, // intrinsèque : pas de règle
+    gated(engine, RULE_CHEMISTRY, chemistry),
+    gated(engine, RULE_CONDITIONS, lifeConditions),
+    gated(engine, RULE_LIFE, life),
+  ];
+  if (hazardsEnabled) systems.push(hazardRoller, hazardMover);
+  return { systems };
 }
 
 function defineRules(engine: RuleEngine): void {

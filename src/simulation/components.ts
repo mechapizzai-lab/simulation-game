@@ -111,6 +111,30 @@ export interface IgnitingData {
 }
 export const Igniting = defineComponent<IgnitingData>('Igniting');
 
+/** Corps menaçant en approche (astéroïde...) : lié à un événement de la Fate
+ *  Queue du CORPS VISÉ. Sa position est interpolée paramétriquement entre son
+ *  point d'apparition et la cible mouvante — il arrive exactement au tick
+ *  d'impact, et si l'événement disparaît (annulé), il est dévié. */
+export interface HazardData {
+  /** Id de l'événement de destin correspondant, porté par la cible. */
+  eventId: number;
+  target: number;
+  bornTick: number;
+  fromX: number;
+  fromY: number;
+  /** Copie du tick d'échéance, resynchronisée depuis la Fate Queue par le
+   *  mover (une replanification déplace donc aussi le corps) : le rendu
+   *  affiche le compte à rebours sans dépendre de la queue. */
+  impactTick: number;
+}
+export const Hazard = defineComponent<HazardData>('Hazard');
+
+/** Cicatrice d'impact : l'échec laisse une trace permanente et visible. */
+export interface CraterData {
+  sinceTick: number;
+}
+export const Crater = defineComponent<CraterData>('Crater');
+
 /** Rattache une entité de surface à sa planète : sa Position s'exprime alors
  *  en coordonnées LOCALES de la surface. Le rendu ancre cette surface sur la
  *  position orbitale de la planète — c'est ce qui permet le zoom continu

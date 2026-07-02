@@ -26,6 +26,14 @@
  *    l'univers franchit un seuil observable (première étoile...). Le joueur
  *    finance la règle suivante en OBSERVANT le résultat de la précédente —
  *    la boucle coder → observer → intervenir est aussi la boucle d'économie.
+ *
+ * 4. INTERVENIR BRÛLE DU CALCUL : réécrire un destin déjà écrit (annuler un
+ *    impact, repousser une mort) consomme du calcul LIBRE (capacité − règles
+ *    actives). Le calcul brûlé se régénère lentement — chaque intervention
+ *    est donc un arbitrage : sauver ce monde maintenant, c'est ne pas pouvoir
+ *    coder ou sauver autre chose tout de suite. En fin de partie, couper les
+ *    règles de cosmogonie devenues inutiles (Matière, Agrégation...) est LE
+ *    moyen de libérer du calcul d'intervention : les produits persistent.
  */
 import type { World } from './ecs.js';
 
@@ -64,10 +72,13 @@ export interface Milestone {
 }
 
 export type RuleEventListener = (event: {
-  kind: 'activated' | 'deactivated' | 'milestone' | 'param-changed';
+  kind: 'activated' | 'deactivated' | 'milestone' | 'param-changed' | 'spent';
   id: string;
   detail?: string;
 }) => void;
+
+/** Ticks pour régénérer 1 point de calcul brûlé par une intervention. */
+const BURN_REGEN_TICKS = 250;
 
 export class RuleEngine {
   private readonly defs = new Map<string, RuleDef>();
@@ -82,6 +93,10 @@ export class RuleEngine {
   private readonly milestones: Milestone[] = [];
   private readonly reached = new Set<string>();
   private readonly listeners: RuleEventListener[] = [];
+  /** Calcul brûlé par les interventions, en cours de régénération (flottant
+   *  interne, arrondi vers le haut à l'affichage et dans les vérifications). */
+  private burnedValue = 0;
+  private everIntervened = false;
 
   capacity: number;
 
@@ -128,6 +143,38 @@ export class RuleEngine {
     return sum;
   }
 
+  get burned(): number {
+    return Math.ceil(this.burnedValue);
+  }
+
+  /** Calcul immédiatement disponible pour coder une règle ou intervenir. */
+  get free(): number {
+    return this.capacity - this.used - this.burned;
+  }
+
+  /**
+   * Brûle du calcul libre pour une intervention (réécriture de destin).
+   * Refuse si le libre ne suffit pas — l'appelant affiche la raison.
+   * La toute première intervention paie un jalon : apprendre à réécrire le
+   * destin EST une émergence (celle du joueur).
+   */
+  spend(amount: number, reason: string): boolean {
+    if (amount > this.free) return false;
+    this.burnedValue += amount;
+    this.emit({ kind: 'spent', id: reason, detail: `−${amount} calcul` });
+    if (!this.everIntervened) {
+      this.everIntervened = true;
+      this.capacity += 2;
+      this.emit({ kind: 'milestone', id: 'm-rewrite', detail: 'Premier destin réécrit : capacité +2' });
+    }
+    return true;
+  }
+
+  /** À appeler chaque tick : le calcul brûlé se régénère lentement. */
+  regen(dtTicks: number): void {
+    this.burnedValue = Math.max(0, this.burnedValue - dtTicks / BURN_REGEN_TICKS);
+  }
+
   /** Paramètre courant d'une règle — LE point d'accès des systems (lecture
    *  en direct : c'est le niveau (a) de la rétroactivité). */
   param(ruleId: string, key: string): number {
@@ -158,8 +205,8 @@ export class RuleEngine {
     if (def.worldRequirement && !def.worldRequirement.check(world)) {
       return `requiert ${def.worldRequirement.label}`;
     }
-    if (this.used + def.cost > this.capacity) {
-      return `budget insuffisant (${this.used + def.cost}/${this.capacity})`;
+    if (this.used + this.burned + def.cost > this.capacity) {
+      return `budget insuffisant (${this.used + this.burned + def.cost}/${this.capacity})`;
     }
     return null;
   }

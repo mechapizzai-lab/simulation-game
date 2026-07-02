@@ -8,6 +8,7 @@
  * des appels au RuleEngine — l'habillage sera réécrit en Control nodes Godot.
  */
 import type { World } from '../simulation/ecs.js';
+import { Species } from '../simulation/components.js';
 import { RuleEngine, type RuleDef } from '../simulation/rules.js';
 
 interface RuleCard {
@@ -61,6 +62,37 @@ export class RulesPanel {
       if (e.kind === 'milestone') this.addLogEntry(`✦ ${e.detail ?? e.id}`, true);
       else if (e.kind === 'activated') this.addLogEntry(`+ ${engine.get(e.id).label} codée`);
       else if (e.kind === 'deactivated') this.addLogEntry(`− ${engine.get(e.id).label} coupée`);
+      else if (e.kind === 'spent') this.addLogEntry(`⚙ intervention : ${e.detail ?? ''}`);
+    });
+    // Le journal raconte aussi les menaces : annonce, issue, échec persistant.
+    world.onEvent((e) => {
+      const name = (): string => this.world.get(e.entity, Species)?.label ?? `entité #${e.entity}`;
+      if (e.kind === 'hazard-announced') {
+        const data = e.data as { hazard: string; atTick: number };
+        const what =
+          data.hazard === 'hazard-impact'
+            ? `☄ Un astéroïde fonce vers ${name()}`
+            : data.hazard === 'hazard-drought'
+              ? `☀ Sécheresse annoncée sur ${name()}`
+              : `☀ Éruption imminente de ${name()}`;
+        this.addLogEntry(`${what} — échéance au tick ${data.atTick}`, true);
+      } else if (e.kind === 'hazard-impact') {
+        const deaths = (e.data as { deaths: number }).deaths;
+        this.addLogEntry(`☄ ${name()} : IMPACT — ${deaths} vies effacées, un cratère demeure`, true);
+      } else if (e.kind === 'hazard-drought') {
+        const deaths = (e.data as { deaths: number }).deaths;
+        this.addLogEntry(
+          deaths > 0
+            ? `☀ ${name()} : la mer a reculé — ${deaths} morts de soif`
+            : `☀ ${name()} : la mer a reculé, mais elle a tenu`,
+          deaths > 0,
+        );
+      } else if (e.kind === 'hazard-flare') {
+        const burned = (e.data as { burned: number }).burned;
+        this.addLogEntry(`☀ Éruption de ${name()} — ${burned} forêts brûlées`, burned > 0);
+      } else if (e.kind === 'hazard-deflected') {
+        this.addLogEntry(`✦ Trajectoire déviée : ${name()} est sauf`, true);
+      }
     });
     this.addLogEntry('Le Vide. Rien n\'existe. À vous d\'écrire la première règle.');
   }
@@ -143,8 +175,12 @@ export class RulesPanel {
 
   /** À appeler chaque frame : états, budget, blocages — sans casser la saisie. */
   update(): void {
-    this.budgetText.textContent = `calcul : ${this.engine.used} / ${this.engine.capacity}`;
-    const ratio = this.engine.capacity > 0 ? this.engine.used / this.engine.capacity : 0;
+    const { used, burned, capacity, free } = this.engine;
+    this.budgetText.textContent =
+      burned > 0
+        ? `calcul : ${used} règles + ${burned} brûlé / ${capacity} — libre ${free}`
+        : `calcul : ${used} / ${capacity} — libre ${free}`;
+    const ratio = capacity > 0 ? (used + burned) / capacity : 0;
     this.budgetFill.style.width = `${Math.min(100, ratio * 100)}%`;
     this.budgetFill.classList.toggle('full', ratio >= 0.999);
 
