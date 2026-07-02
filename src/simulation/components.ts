@@ -131,11 +131,13 @@ export interface PlanetKindData {
 }
 export const PlanetKind = defineComponent<PlanetKindData>('PlanetKind');
 
-/** Onde de choc transitoire (supernova) : anneau en expansion, purement
- *  visuel — les dégâts sont appliqués d'un coup à la réalisation. */
+/** Onde de choc transitoire (supernova, Big Bang) : anneau en expansion,
+ *  purement visuel — les effets sont appliqués d'un coup à la réalisation.
+ *  `flash` ajoute un voile blanc plein écran qui se dissipe (Big Bang). */
 export interface ShockwaveData {
   bornTick: number;
   maxRadius: number;
+  flash: boolean;
 }
 export const Shockwave = defineComponent<ShockwaveData>('Shockwave');
 

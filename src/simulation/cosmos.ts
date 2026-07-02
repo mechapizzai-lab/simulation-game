@@ -71,6 +71,15 @@ export const FATE_DROUGHT = 'hazard-drought';
 export const FATE_FLARE = 'hazard-flare';
 export const FATE_SUPERNOVA = 'supernova';
 export const FATE_STAR_DEATH = 'star-death';
+export const FATE_BIG_BANG = 'big-bang';
+
+/** Ticks entre l'apparition de la singularité et la déflagration : le temps
+ *  de la lire, de la contempler — ou d'annuler la naissance de l'univers. */
+export const SINGULARITY_FUSE = 120;
+/** Au-delà de cette distance, l'expansion emporte la matière hors de
+ *  l'existence (et libère son budget de masse) : sans Gravité codée, un
+ *  Big Bang se disperse — l'univers rate son départ, sans réussite forcée. */
+export const EXPANSION_BOUNDARY = UNIVERSE_RADIUS * 1.6;
 
 /**
  * Classes stellaires — figées à l'allumage d'après la masse. La première
@@ -127,6 +136,7 @@ const INTERVENTION_BASE: Record<string, number> = {
   // 18 à la dernière minute — l'étoile graciée devient éternelle.
   [FATE_SUPERNOVA]: 3,
   [FATE_STAR_DEATH]: 1,
+  [FATE_BIG_BANG]: 2, // repousser (ou refuser) la naissance de l'univers
   death: 1,
   maturity: 1,
   [FATE_FOREST_SEED]: 1,
@@ -235,7 +245,90 @@ export function defineCosmos(
   defineMilestones(engine);
 
   // ================================================================
+  // BIG BANG — l'univers ne commence pas par une bruine : quand Temps,
+  // Espace et Matière coexistent pour la première fois, une SINGULARITÉ
+  // apparaît au centre du Vide, avec la naissance de l'univers écrite dans
+  // sa timeline. Le joueur peut la lire, la repousser — ou la refuser.
+  // À la déflagration, la matière initiale est éjectée radialement depuis
+  // le point ; la condensation ne devient qu'un résidu du bang. Et sans
+  // Gravité codée, l'expansion disperse tout : un univers peut rater son
+  // départ. Pas de réussite forcée, même pour naître.
+  // ================================================================
+  let bangOccurred = false;
+  let matterWasActive = false;
+  const singularity: System = {
+    name: 'singularity',
+    update(w, tick): void {
+      if (bangOccurred) return;
+      const triad =
+        engine.isActive(RULE_TIME) && engine.isActive(RULE_SPACE) && engine.isActive(RULE_MATTER);
+      const existing = firstOfKind(w, 'singularity');
+      if (existing === null) {
+        if (triad) {
+          const e = w.createEntity();
+          w.add(e, Species, { kind: 'singularity', label: 'Singularité' });
+          w.add(e, Position, { x: 0, y: 0 });
+          w.add(e, Size, { size: 1.5 });
+          fate.schedule(tick + SINGULARITY_FUSE, e, FATE_BIG_BANG);
+          w.emit({ kind: 'singularity-born', entity: e, tick, data: { atTick: tick + SINGULARITY_FUSE } });
+        }
+      } else if (triad && !matterWasActive) {
+        // Le Big Bang a été ANNULÉ puis Matière recodée : la singularité se
+        // ré-arme — refuser la naissance n'est jamais définitif.
+        const pending = fate.eventsFor(existing).some((ev) => ev.kind === FATE_BIG_BANG);
+        if (!pending) fate.schedule(tick + SINGULARITY_FUSE, existing, FATE_BIG_BANG);
+      }
+      matterWasActive = triad;
+    },
+  };
+
+  fate.onKind(FATE_BIG_BANG, (w, event) => {
+    if (bangOccurred || !w.isAlive(event.entity)) return;
+    bangOccurred = true;
+    const origin = w.get(event.entity, Position) ?? { x: 0, y: 0 };
+    const burst = Math.min(Math.round(engine.param(RULE_MATTER, 'max')), 140);
+    for (let i = 0; i < burst; i++) {
+      const angle = rng.range(0, Math.PI * 2);
+      const speed = rng.range(0.5, 1.3);
+      const swirl = rng.range(0.08, 0.22);
+      const e = w.createEntity();
+      w.add(e, Species, { kind: 'particle', label: 'Particule' });
+      w.add(e, Position, { x: origin.x + Math.cos(angle) * rng.range(0, 6), y: origin.y + Math.sin(angle) * rng.range(0, 6) });
+      w.add(e, Velocity, {
+        vx: Math.cos(angle) * speed - Math.sin(angle) * swirl,
+        vy: Math.sin(angle) * speed + Math.cos(angle) * swirl,
+      });
+      w.add(e, Mass, { mass: 1 });
+      w.add(e, Size, { size: 1 });
+    }
+    const wave = w.createEntity();
+    w.add(wave, Species, { kind: 'shockwave', label: 'Déflagration' });
+    w.add(wave, Position, { x: origin.x, y: origin.y });
+    w.add(wave, Size, { size: 1 });
+    w.add(wave, Shockwave, { bornTick: w.tick, maxRadius: 650, flash: true });
+    w.destroyEntity(event.entity);
+    w.emit({ kind: 'big-bang', entity: event.entity, tick: w.tick, data: { particles: burst } });
+  });
+
+  /** L'expansion emporte hors de l'existence la matière qui s'échappe trop
+   *  loin — et libère son budget de masse. Intrinsèque : l'espace n'attend
+   *  la permission de personne pour être vaste. */
+  const expansion: System = {
+    name: 'expansion',
+    update(w): void {
+      for (const [e, s] of w.query(Species)) {
+        if (s.kind !== 'particle') continue;
+        const pos = w.get(e, Position);
+        if (pos && pos.x * pos.x + pos.y * pos.y > EXPANSION_BOUNDARY * EXPANSION_BOUNDARY) {
+          w.destroyEntity(e);
+        }
+      }
+    },
+  };
+
+  // ================================================================
   // MATIÈRE — des particules condensent du vide, à taux paramétrable.
+  // (Rien ne condense AVANT le Big Bang : la bruine est son résidu.)
   // ================================================================
   // Le plafond porte sur les particules LIBRES simultanées : le vide condense
   // en continu tant que la règle tourne (l'agrégation qui en consomme laisse
@@ -247,6 +340,7 @@ export function defineCosmos(
   const condensation: System = {
     name: 'condensation',
     update(w): void {
+      if (!bangOccurred) return;
       const max = engine.param(RULE_MATTER, 'max');
       let free = countKind(w, 'particle');
       if (free >= max) {
@@ -629,7 +723,7 @@ export function defineCosmos(
     w.add(wave, Species, { kind: 'shockwave', label: 'Onde de choc' });
     w.add(wave, Position, { x: starPos.x, y: starPos.y });
     w.add(wave, Size, { size: 1 }); // requis par le rendu ; le rayon vient de Shockwave
-    w.add(wave, Shockwave, { bornTick: w.tick, maxRadius: SHOCK_ENRICH_RADIUS });
+    w.add(wave, Shockwave, { bornTick: w.tick, maxRadius: SHOCK_ENRICH_RADIUS, flash: false });
     w.emit({ kind: 'supernova', entity: star, tick: w.tick, data: { casualties, enriched, blackHole: mass >= BLACK_HOLE_MASS } });
   });
 
@@ -1152,6 +1246,8 @@ export function defineCosmos(
   };
 
   const systems: System[] = [
+    singularity,
+    expansion,
     gated(engine, RULE_MATTER, condensation),
     gated(engine, RULE_GRAVITY, gravityDrift),
     gated(engine, RULE_AGGREGATION, aggregation),

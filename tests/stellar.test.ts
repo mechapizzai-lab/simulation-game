@@ -41,6 +41,9 @@ function makeSim(seed = 7): ReturnType<typeof buildVoidScenario> {
   for (const id of [RULE_TIME, RULE_SPACE, RULE_MATTER, RULE_GRAVITY, RULE_AGGREGATION, RULE_FUSION]) {
     s.engine.activate(id, s.world);
   }
+  // Matière codée (savoir acquis pour l'arbre) puis COUPÉE : pas de Big Bang
+  // ni de matière parasite — ces tests sculptent leurs corps à la main.
+  s.engine.deactivate(RULE_MATTER);
   return s;
 }
 

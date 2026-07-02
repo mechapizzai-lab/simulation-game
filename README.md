@@ -23,8 +23,13 @@ npm run build    # type-check strict + bundle de production
 
 ## Jouer
 
-1. **Le Vide.** Rien n'existe. Le panneau gauche (« Code de l'univers ») liste
-   les règles ; seules Temps et Espace sont codables.
+1. **Le Vide, puis le Big Bang.** Rien n'existe. Quand Temps, Espace et
+   Matière coexistent pour la première fois, une SINGULARITÉ apparaît au
+   centre — cliquez-la : la naissance de l'univers est écrite dans sa
+   timeline (« ✸ BIG BANG : tick N »), replanifiable, annulable. À la
+   déflagration : flash, onde de choc, la matière initiale éjectée depuis le
+   point. Sans Gravité codée, l'expansion disperse tout hors de l'existence —
+   un univers peut rater son départ.
 2. **Codez.** Chaque règle a un effet immédiat ou progressif : la Matière
    condense des particules, la Gravité les fait dériver, l'Agrégation les
    amasse, la Fusion allume les étoiles (l'allumage est un *destin* écrit

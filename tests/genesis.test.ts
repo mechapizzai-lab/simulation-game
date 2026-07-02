@@ -18,7 +18,19 @@ import {
   FATE_IGNITION,
   countKind,
 } from '../src/simulation/cosmos.js';
-import { Igniting, Mass, Position, Size, Species, Temperature } from '../src/simulation/components.js';
+import {
+  Chemistry,
+  Igniting,
+  Mass,
+  Orbit,
+  OrbitMigration,
+  Position,
+  Size,
+  Species,
+  StellarClass,
+  Temperature,
+} from '../src/simulation/components.js';
+import { TERRAFORM_ORBIT_COST } from '../src/simulation/cosmos.js';
 
 /** Avance jusqu'à ce que la condition soit vraie (ou échoue après maxTicks). */
 function runUntil(
@@ -103,10 +115,37 @@ test('la grande échelle : du néant à la vie, avec deux dilemmes de budget', (
   // éclater pendant la course à l'habitabilité. Le test traverse l'acte 1
   // et, s'il le faut, l'acte 2 (étoiles de seconde génération, plus calmes).
   assert.equal(engine.activate(RULE_CONDITIONS, world), true);
+  // On attend l'eau ; si l'univers ne l'offre pas (ex. : toutes les planètes
+  // hors de la zone resserrée d'une naine rouge — vécu sur cette seed), on
+  // fait ce qu'un joueur ferait : PAYER une terraformation et migrer un monde
+  // riche en chimie vers la zone tempérée de son étoile. Pas de réussite
+  // forcée — une intervention délibérée.
+  for (let i = 0; i < 20_000 && !engine.hasReached('m-habitable'); i++) world.step();
+  if (!engine.hasReached('m-habitable')) {
+    let terraformed = false;
+    for (const [planet, sp] of world.query(Species)) {
+      if (sp.kind !== 'planet') continue;
+      const orbit = world.get(planet, Orbit);
+      const chem = world.get(planet, Chemistry);
+      if (!orbit || !chem || chem.richness < 1) continue;
+      if (world.get(orbit.center, Species)?.kind !== 'star') continue;
+      const lum = world.get(orbit.center, StellarClass)?.luminosity ?? 1;
+      // Financer le geste : couper les règles de cosmogonie devenues inutiles
+      // (leurs produits persistent) — LE réflexe stratégique de fin de partie.
+      if (engine.free < TERRAFORM_ORBIT_COST) engine.deactivate(RULE_AGGREGATION);
+      if (engine.free < TERRAFORM_ORBIT_COST) engine.deactivate(RULE_MATTER);
+      if (engine.free < TERRAFORM_ORBIT_COST) engine.deactivate(RULE_GRAVITY);
+      assert.equal(engine.spend(TERRAFORM_ORBIT_COST, 'terraform-orbit'), true, 'le calcul libre paie la migration');
+      world.add(planet, OrbitMigration, { targetRadius: Math.round(160 * lum) });
+      terraformed = true;
+      break;
+    }
+    assert.equal(terraformed, true, 'au moins un monde candidat à terraformer');
+  }
   runUntil(
     s,
-    'un monde devient habitable (à travers la première supernova s\'il le faut)',
-    60_000,
+    'un monde devient habitable (offert par l\'univers, ou arraché par terraformation)',
+    40_000,
     () => engine.hasReached('m-habitable'),
   );
 
@@ -160,6 +199,8 @@ test('rétroactivité : paramètres en direct, destins écrits figés', () => {
   );
 
   // (a) Les paramètres des processus continus agissent dès le tick suivant.
+  // (On traverse d'abord le Big Bang : rien ne condense avant lui.)
+  for (let i = 0; i < 300; i++) world.step();
   const before = countKind(world, 'particle');
   engine.setParam(RULE_MATTER, 'rate', 40);
   for (let i = 0; i < 50; i++) world.step();

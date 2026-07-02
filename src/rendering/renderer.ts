@@ -278,6 +278,27 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(px, py, Math.max(1.5, r), 0, Math.PI * 2);
         ctx.fill();
+      } else if (species.kind === 'singularity') {
+        // Le point d'avant toute chose : blanc pur, qui frémit.
+        const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 160);
+        const halo = ctx.createRadialGradient(px, py, 0, px, py, 26 * pulse);
+        halo.addColorStop(0, `rgba(255, 255, 255, ${0.85 * pulse})`);
+        halo.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(px, py, 26 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        if (entity === selected) {
+          ctx.strokeStyle = '#ffd75e';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(px, py, 10, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       } else if (species.kind === 'shockwave') {
         const sw = world.get(entity, Shockwave);
         if (sw) {
@@ -288,6 +309,14 @@ export class Renderer {
           ctx.beginPath();
           ctx.arc(px, py, radius, 0, Math.PI * 2);
           ctx.stroke();
+          // Le flash du Big Bang : un voile blanc qui se dissipe.
+          if (sw.flash) {
+            const flashAge = (world.tick - sw.bornTick) / 90;
+            if (flashAge < 1) {
+              ctx.fillStyle = `rgba(255, 253, 245, ${0.9 * (1 - flashAge) ** 1.5})`;
+              ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            }
+          }
         }
       } else if (species.kind === 'planet') {
         ctx.fillStyle = planetColor(world, entity);
@@ -372,7 +401,7 @@ export class Renderer {
     for (const [entity, species] of world.query(Species)) {
       // Tout corps céleste est inspectable — y compris un amas, dont la
       // timeline montre l'allumage à venir.
-      if (!['planet', 'star', 'clump', 'particle', 'asteroid', 'blackhole', 'remnant'].includes(species.kind)) continue;
+      if (!['planet', 'star', 'clump', 'particle', 'asteroid', 'blackhole', 'remnant', 'singularity'].includes(species.kind)) continue;
       const pos = world.get(entity, Position);
       const size = world.get(entity, Size);
       if (!pos || !size) continue;

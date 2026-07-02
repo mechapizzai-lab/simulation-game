@@ -134,6 +134,7 @@ const FATE_LABELS: Record<string, string> = {
   'hazard-flare': '☀ Éruption',
   supernova: '★ SUPERNOVA',
   'star-death': 'Extinction',
+  'big-bang': '✸ BIG BANG',
 };
 
 /** Une ligne champ éditable : synchronisée chaque frame SAUF pendant la saisie. */

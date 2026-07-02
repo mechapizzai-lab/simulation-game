@@ -121,6 +121,12 @@ export class RulesPanel {
         this.addLogEntry(`⛭ ${name()} : migration d'orbite engagée vers ${target}`);
       } else if (e.kind === 'terraform-complete') {
         this.addLogEntry(`⛭ ${name()} : orbite stabilisée`, true);
+      } else if (e.kind === 'singularity-born') {
+        const at = (e.data as { atTick: number }).atTick;
+        this.addLogEntry(`✸ Une singularité frémit — l'univers naîtra au tick ${at}`, true);
+      } else if (e.kind === 'big-bang') {
+        const n = (e.data as { particles: number }).particles;
+        this.addLogEntry(`✸ BIG BANG — ${n} grains d'existence projetés dans le Vide`, true);
       } else if (e.kind === 'supernova') {
         const d = e.data as { casualties: number; enriched: number; blackHole: boolean };
         this.addLogEntry(
