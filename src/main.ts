@@ -1,11 +1,13 @@
 /**
  * Point d'entrée : câble simulation ↔ rendu ↔ UI.
- * Étape 3 : vue fixe sur la surface de Gaïa — les entités bougent, grandissent
- * et vieillissent visiblement au rythme des ticks.
+ * Étape 4 : caméra multi-échelle — de la vue système au sol de Gaïa, au zoom
+ * molette, sans changement de scène.
  */
-import { buildScenario, SURFACE_HALF_HEIGHT, SURFACE_HALF_WIDTH } from './scenario.js';
+import { buildScenario } from './scenario.js';
 import { SimulationClock } from './simulation/loop.js';
-import { drawSurface, type SurfaceTransform } from './rendering/surface.js';
+import { Camera } from './rendering/camera.js';
+import { Renderer } from './rendering/renderer.js';
+import { bindInput } from './rendering/input.js';
 import { Hud } from './ui/hud.js';
 
 const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -15,32 +17,36 @@ const scenario = buildScenario();
 const clock = new SimulationClock(scenario.world);
 const hud = new Hud(document.getElementById('hud') as HTMLElement, clock, scenario.world);
 
+const viewport = { width: 0, height: 0 };
 function resize(): void {
   canvas.width = window.innerWidth * devicePixelRatio;
   canvas.height = window.innerHeight * devicePixelRatio;
+  viewport.width = canvas.width;
+  viewport.height = canvas.height;
 }
 window.addEventListener('resize', resize);
 resize();
 
-/** Vue fixe : la carte de surface remplit l'écran (remplacée par la caméra
- *  multi-échelle à l'étape 4). */
-function fixedTransform(): SurfaceTransform {
-  const scale =
-    Math.min(canvas.width / (SURFACE_HALF_WIDTH * 2), canvas.height / (SURFACE_HALF_HEIGHT * 2)) * 0.92;
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2;
-  return { toX: (sx) => cx + sx * scale, toY: (sy) => cy + sy * scale, scale };
-}
+const camera = new Camera(viewport);
+const renderer = new Renderer(ctx, canvas);
+/** Seule Gaïa porte de la vie pour l'instant ; la liste est prête pour plus. */
+const surfacePlanets = [scenario.gaia];
+
+bindInput(canvas, camera, (px, py) => {
+  const hit = renderer.pick(scenario.world, camera, px, py, surfacePlanets);
+  // La sélection alimente le panneau divin (étape 5).
+  selected = hit;
+});
+let selected: number | null = null;
 
 let lastTime = performance.now();
 function frame(now: number): void {
   const dt = Math.min(0.25, (now - lastTime) / 1000); // clamp : onglet inactif
   lastTime = now;
   clock.advance(dt);
+  camera.update(dt, scenario.world, surfacePlanets);
 
-  ctx.fillStyle = '#05070d';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  drawSurface(ctx, scenario.world, scenario.gaia, fixedTransform(), null);
+  renderer.render(scenario.world, camera, surfacePlanets, selected);
   hud.update();
   requestAnimationFrame(frame);
 }
